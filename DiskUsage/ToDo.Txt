@@ -1,0 +1,48 @@
+<#
+TODO:
+!!! DU behavior differnces: TODO: Refactor Measure-DiskUsage accordingly
+  1) DU with no arguments:
+     Outputs 1-Line for each recursed directory, wich includes size of all
+     files in that directory + all the files in its subdirectories.
+    -All
+      Means report line-item for each file
+      Note: Sumerize and -All parameters are mutually excusive
+    -SeparateDirs  
+     Outputs 1-Line for each recursed directory, wich includes size of all
+     files in that directory, but does NOT indlude files in any subdirectories.
+     Note: The default includes the subdirectories
+     This is where the -Total paramters makes sence to output the Cumulative total
+     of the last -Path directory
+    -All, -SeparateDirs, -Total: can be combined =>
+     First get output for each file in a folder
+     Then get subtotal for that folder
+     ...
+     Get output for each file in -Path
+     Get get subtotal for -Path
+     Get Cumulative TOTAL
+  2) Include a colums with the Powershell directory item. This way the caller
+     can know if an entry is a file or directory
+    
+  3) DU reports KB size on disk, not apparent bytes in file
+     We should a both colums
+  4) DU always includes the files of the top-level path.     
+  5) DU reports the directory name relative to the provided -Path parameter
+
+-B[K|M|G|T] 
+Scale the reported Size; e.g.'-BM' prints Size in Megabytes
+TODO: Refactor Show-DiskUsage accordingy
+
+-Time
+Include colums with LastWriteTime, i.e. The time of the last modification of any 
+file in the directory, or any of its subdirectories (based on -SeparateDirs)
+
+-Force 
+Gets items that otherwise can't be accessed by the user, such as hidden or system files. 
+The Force parameter doesn't override security restrictions
+
+-Decide on how to handle Symbolic-Links & Junktions for Dir's & files.
+Current thinking: Ignore all symlinks because we are trying to gage actual disk usage
+TODO: Make sure to check the linkType if needed
+
+#>
+
