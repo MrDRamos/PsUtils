@@ -272,6 +272,10 @@ function Show-DiskUsage
         [switch] $Gigabytes,
 
         [Parameter()]
+        [ValidateSet($null, "Size", "Files", "Name")]
+        [string] $SortBy = $null,
+
+        [Parameter()]
         [switch] $Descending
     )
    
@@ -303,7 +307,25 @@ function Show-DiskUsage
         $UFmt = "{0,15:N0}"
         $Ufac = 1
     }
+    $TblColS = @(@{Name=$UHdr; Expression={$Ufmt -f ($_.Size / $Ufac)} }, "Files", "Name")
 
-    $Usage = Measure-DiskUsage -Path $Path -Include $Include -Exclude $Exclude -FullName:$FullName -Total:$Total -Summarize:$Summarize -Depth $Depth -All:$All
-    $Usage | Sort-Object -Descending:$Descending -Property Size | Format-Table -Property @{Name=$UHdr; Expression={$Ufmt -f ($_.Size / $Ufac)} }, Files, Name
+    $ParamS = @{
+        Path      = $Path
+        Include   = $Include 
+        Exclude   = $Exclude 
+        FullName  =  $FullName
+        Total     = $Total 
+        Summarize = $Summarize 
+        Depth     = $Depth 
+        All       = $All
+    }
+    if ($SortBy)
+    {
+        $Usage = Measure-DiskUsage @ParamS
+        $Usage | Sort-Object -Descending:$Descending -Property $SortBy | Format-Table -Property $TblColS
+    }
+    else 
+    {
+        Measure-DiskUsage @ParamS | Format-Table -Property $TblColS
+    }
 }
