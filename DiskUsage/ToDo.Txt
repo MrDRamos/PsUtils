@@ -46,3 +46,330 @@ TODO: Make sure to check the linkType if needed
 
 #>
 
+
+
+Get-ChildItem "F:\Repos\Readme_AzureDevOps.txt" | Format-List *
+
+<#
+### 1 oldest post
+Retrieves the actual number of bytes of disk storage used to store a specified file
+https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getcompressedfilesizew
+
+How to get the actual size-on-disk of a file from PowerShell?
+https://stackoverflow.com/questions/554010/how-to-get-the-actual-size-on-disk-of-a-file-from-powershell
+
+add-type -type  @'
+using System;
+using System.Runtime.InteropServices;
+using System.ComponentModel;
+
+namespace Win32Functions
+{
+    public class ExtendedFileInfo
+    {
+        [DllImport("kernel32.dll", SetLastError=true, EntryPoint="GetCompressedFileSize")]
+        static extern uint GetCompressedFileSizeAPI(string lpFileName, out uint lpFileSizeHigh);
+
+        public static ulong GetCompressedFileSize(string filename)
+        {
+            uint high;
+            uint low;
+            low = GetCompressedFileSizeAPI(filename, out high);
+            int error = Marshal.GetLastWin32Error();
+            if (high == 0 && low == 0xFFFFFFFF && error != 0)
+            throw new Win32Exception(error);
+            else
+            return ((ulong)high << 32) + low;
+        }
+    }
+}
+'@
+
+
+#Use like this:
+$File = "F:\Repos\Readme_AzureDevOps.txt"
+[Win32Functions.ExtendedFileInfo]::GetCompressedFileSize( $File )
+
+exit 
+#>
+
+
+<#####################################################
+### 2 Updated Post
+
+#Getting “size on disk” for small files in Powershell
+#https://stackoverflow.com/questions/22507523/getting-size-on-disk-for-small-files-in-powershell/22508299#22508299
+
+add-type -type  @'
+using System;
+using System.Runtime.InteropServices;
+using System.ComponentModel;
+using System.IO;
+
+namespace Win32Functions
+{
+  public class ExtendedFileInfo
+  {    
+    public static long GetFileSizeOnDisk(string file)
+    {
+        FileInfo info = new FileInfo(file);
+        uint dummy, sectorsPerCluster, bytesPerSector;
+        int result = GetDiskFreeSpaceW(info.Directory.Root.FullName, out sectorsPerCluster, out bytesPerSector, out dummy, out dummy);
+        if (result == 0) throw new Win32Exception();
+        uint clusterSize = sectorsPerCluster * bytesPerSector;
+        uint hosize;
+        uint losize = GetCompressedFileSizeW(file, out hosize);
+        long size;
+        size = (long)hosize << 32 | losize;
+        return ((size + clusterSize - 1) / clusterSize) * clusterSize;
+    }
+
+    [DllImport("kernel32.dll")]
+    static extern uint GetCompressedFileSizeW([In, MarshalAs(UnmanagedType.LPWStr)] string lpFileName,
+       [Out, MarshalAs(UnmanagedType.U4)] out uint lpFileSizeHigh);
+
+    [DllImport("kernel32.dll", SetLastError = true, PreserveSig = true)]
+    static extern int GetDiskFreeSpaceW([In, MarshalAs(UnmanagedType.LPWStr)] string lpRootPathName,
+       out uint lpSectorsPerCluster, out uint lpBytesPerSector, out uint lpNumberOfFreeClusters,
+       out uint lpTotalNumberOfClusters);  
+  }
+}
+'@
+
+#Use like this:
+$File = "F:\Repos\Readme_AzureDevOps.txt"
+[Win32Functions.ExtendedFileInfo]::GetFileSizeOnDisk( $File )
+exit 
+#>
+
+
+<#####################################################
+### 3 Microsoft Guy
+OneDrive and PowerShell: Get size and size on disk
+https://www.systanddeploy.com/2021/04/onedrive-and-powershell-get-size-and.html
+
+Git:
+https://github.com/damienvanrobaeys/OneDrive_SizeOnDisk
+
+
+#>
+
+
+
+
+Get-ChildItem "F:\Repos\Readme_AzureDevOps.txt" | Format-List *
+
+<#
+### 1 oldest post
+Retrieves the actual number of bytes of disk storage used to store a specified file
+https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getcompressedfilesizew
+
+How to get the actual size-on-disk of a file from PowerShell?
+https://stackoverflow.com/questions/554010/how-to-get-the-actual-size-on-disk-of-a-file-from-powershell
+
+add-type -type  @'
+using System;
+using System.Runtime.InteropServices;
+using System.ComponentModel;
+
+namespace Win32Functions
+{
+    public class ExtendedFileInfo
+    {
+        [DllImport("kernel32.dll", SetLastError=true, EntryPoint="GetCompressedFileSize")]
+        static extern uint GetCompressedFileSizeAPI(string lpFileName, out uint lpFileSizeHigh);
+
+        public static ulong GetCompressedFileSize(string filename)
+        {
+            uint high;
+            uint low;
+            low = GetCompressedFileSizeAPI(filename, out high);
+            int error = Marshal.GetLastWin32Error();
+            if (high == 0 && low == 0xFFFFFFFF && error != 0)
+            throw new Win32Exception(error);
+            else
+            return ((ulong)high << 32) + low;
+        }
+    }
+}
+'@
+
+
+#Use like this:
+$File = "F:\Repos\Readme_AzureDevOps.txt"
+[Win32Functions.ExtendedFileInfo]::GetCompressedFileSize( $File )
+
+exit 
+#>
+
+
+<#####################################################
+### 2 Updated Post
+
+#Getting “size on disk” for small files in Powershell
+#https://stackoverflow.com/questions/22507523/getting-size-on-disk-for-small-files-in-powershell/22508299#22508299
+
+add-type -type  @'
+using System;
+using System.Runtime.InteropServices;
+using System.ComponentModel;
+using System.IO;
+
+namespace Win32Functions
+{
+  public class ExtendedFileInfo
+  {    
+    public static long GetFileSizeOnDisk(string file)
+    {
+        FileInfo info = new FileInfo(file);
+        uint dummy, sectorsPerCluster, bytesPerSector;
+        int result = GetDiskFreeSpaceW(info.Directory.Root.FullName, out sectorsPerCluster, out bytesPerSector, out dummy, out dummy);
+        if (result == 0) throw new Win32Exception();
+        uint clusterSize = sectorsPerCluster * bytesPerSector;
+        uint hosize;
+        uint losize = GetCompressedFileSizeW(file, out hosize);
+        long size;
+        size = (long)hosize << 32 | losize;
+        return ((size + clusterSize - 1) / clusterSize) * clusterSize;
+    }
+
+    [DllImport("kernel32.dll")]
+    static extern uint GetCompressedFileSizeW([In, MarshalAs(UnmanagedType.LPWStr)] string lpFileName,
+       [Out, MarshalAs(UnmanagedType.U4)] out uint lpFileSizeHigh);
+
+    [DllImport("kernel32.dll", SetLastError = true, PreserveSig = true)]
+    static extern int GetDiskFreeSpaceW([In, MarshalAs(UnmanagedType.LPWStr)] string lpRootPathName,
+       out uint lpSectorsPerCluster, out uint lpBytesPerSector, out uint lpNumberOfFreeClusters,
+       out uint lpTotalNumberOfClusters);  
+  }
+}
+'@
+
+#Use like this:
+$File = "F:\Repos\Readme_AzureDevOps.txt"
+[Win32Functions.ExtendedFileInfo]::GetFileSizeOnDisk( $File )
+exit 
+#>
+
+
+<#####################################################
+### 3 Microsoft Guy
+OneDrive and PowerShell: Get size and size on disk
+https://www.systanddeploy.com/2021/04/onedrive-and-powershell-get-size-and.html
+
+Git:
+https://github.com/damienvanrobaeys/OneDrive_SizeOnDisk
+
+
+#>
+
+
+
+
+Get-ChildItem "F:\Repos\Readme_AzureDevOps.txt" | Format-List *
+
+<#
+### 1 oldest post
+Retrieves the actual number of bytes of disk storage used to store a specified file
+https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getcompressedfilesizew
+
+How to get the actual size-on-disk of a file from PowerShell?
+https://stackoverflow.com/questions/554010/how-to-get-the-actual-size-on-disk-of-a-file-from-powershell
+
+add-type -type  @'
+using System;
+using System.Runtime.InteropServices;
+using System.ComponentModel;
+
+namespace Win32Functions
+{
+    public class ExtendedFileInfo
+    {
+        [DllImport("kernel32.dll", SetLastError=true, EntryPoint="GetCompressedFileSize")]
+        static extern uint GetCompressedFileSizeAPI(string lpFileName, out uint lpFileSizeHigh);
+
+        public static ulong GetCompressedFileSize(string filename)
+        {
+            uint high;
+            uint low;
+            low = GetCompressedFileSizeAPI(filename, out high);
+            int error = Marshal.GetLastWin32Error();
+            if (high == 0 && low == 0xFFFFFFFF && error != 0)
+            throw new Win32Exception(error);
+            else
+            return ((ulong)high << 32) + low;
+        }
+    }
+}
+'@
+
+
+#Use like this:
+$File = "F:\Repos\Readme_AzureDevOps.txt"
+[Win32Functions.ExtendedFileInfo]::GetCompressedFileSize( $File )
+
+exit 
+#>
+
+
+<#####################################################
+### 2 Updated Post
+
+#Getting “size on disk” for small files in Powershell
+#https://stackoverflow.com/questions/22507523/getting-size-on-disk-for-small-files-in-powershell/22508299#22508299
+
+add-type -type  @'
+using System;
+using System.Runtime.InteropServices;
+using System.ComponentModel;
+using System.IO;
+
+namespace Win32Functions
+{
+  public class ExtendedFileInfo
+  {    
+    public static long GetFileSizeOnDisk(string file)
+    {
+        FileInfo info = new FileInfo(file);
+        uint dummy, sectorsPerCluster, bytesPerSector;
+        int result = GetDiskFreeSpaceW(info.Directory.Root.FullName, out sectorsPerCluster, out bytesPerSector, out dummy, out dummy);
+        if (result == 0) throw new Win32Exception();
+        uint clusterSize = sectorsPerCluster * bytesPerSector;
+        uint hosize;
+        uint losize = GetCompressedFileSizeW(file, out hosize);
+        long size;
+        size = (long)hosize << 32 | losize;
+        return ((size + clusterSize - 1) / clusterSize) * clusterSize;
+    }
+
+    [DllImport("kernel32.dll")]
+    static extern uint GetCompressedFileSizeW([In, MarshalAs(UnmanagedType.LPWStr)] string lpFileName,
+       [Out, MarshalAs(UnmanagedType.U4)] out uint lpFileSizeHigh);
+
+    [DllImport("kernel32.dll", SetLastError = true, PreserveSig = true)]
+    static extern int GetDiskFreeSpaceW([In, MarshalAs(UnmanagedType.LPWStr)] string lpRootPathName,
+       out uint lpSectorsPerCluster, out uint lpBytesPerSector, out uint lpNumberOfFreeClusters,
+       out uint lpTotalNumberOfClusters);  
+  }
+}
+'@
+
+#Use like this:
+$File = "F:\Repos\Readme_AzureDevOps.txt"
+[Win32Functions.ExtendedFileInfo]::GetFileSizeOnDisk( $File )
+exit 
+#>
+
+
+<#####################################################
+### 3 Microsoft Guy
+OneDrive and PowerShell: Get size and size on disk
+https://www.systanddeploy.com/2021/04/onedrive-and-powershell-get-size-and.html
+
+Git:
+https://github.com/damienvanrobaeys/OneDrive_SizeOnDisk
+
+
+#>
+
+
