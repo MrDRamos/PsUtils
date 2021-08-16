@@ -182,7 +182,7 @@ $StartTime = (Get-Date) + [timespan]::FromHours(1)
 $Trigger = New-HourlyTaskTrigger -RepeatRate "1H" -StartTime $StartTime
 $Settings = New-ScheduledTaskSettingsSet -RunOnlyIfNetworkAvailable -WakeToRun -Compatibility Win8
 
-$UsrPswd = ConvertTo-SecureString "3llwang3n" -AsPlainText -Force
+$UsrPswd = ConvertTo-SecureString "<Your-Password>" -AsPlainText -Force
 $UsrName = $ENV:USERNAME
 $RunAs = New-Object PSCredential($UsrName, $UsrPswd)
 
