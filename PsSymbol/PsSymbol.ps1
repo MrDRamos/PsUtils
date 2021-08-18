@@ -25,6 +25,10 @@ function Find-Symbol
         [Parameter()]
         [switch]$CaseSensitive,
 
+        # Return whole-words contianing $Pattern
+        [Parameter()]
+        [switch]$WordsContaining,
+
         [Parameter()]
         [object]$Context = $null
     )
@@ -56,6 +60,11 @@ function Find-Symbol
             $FileContent = Get-Content $File
             foreach ($PatternI in $Pattern) 
             {
+                if ($WordsContaining)
+                {
+                    $PatternI = "(\w+-$PatternI\w+)"
+                }
+
                 [array]$FoundItemS = $FileContent | Select-String -Pattern $PatternI -CaseSensitive:$CaseSensitive
                 if ($FoundItemS)
                 {
@@ -289,9 +298,13 @@ $ExcludeFileS = @(
 )
 
 Write-Host "Sourcing PsSymbol.ps1" -ForegroundColor Magenta
-Set-Location D:\Builds\OlcManagementLib\IEM-Automation
+#Set-Location D:\Builds\OlcPortal\IEM-Automation
 
+exit
 #------
+
+$SymbolS = Find-Symbol -Include "*.ps1" -Pattern "AzRm" -WordsContaining -Path .\tools
+$SymbolS | Format-Table
 
 <#
 $CallGraph = Get-SymbolPsCallGraph -Verbose
