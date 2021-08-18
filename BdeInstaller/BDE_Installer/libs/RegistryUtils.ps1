@@ -19,9 +19,9 @@ Write-RegValue()
     PropertyName. It contains logic to workaround inconsistancies of the 
     native powershell Set-ItemProperty implementation.
 
-Get-RegPropertieS()    
-    Returns all the properties of a Registry key as Name/Value pairs in
-    an [OrderedDictionary]
+Get-RegPropertieS()
+    Returns all the properties of a Registry key as Name/Value pairs as a 
+    [Hashtable]
 
 Search-RegPropValue()
     Inspects the specified registry key and all its child keys recursively.
@@ -36,7 +36,7 @@ Search-RegPropName()
 Get-RegKey()
     Ever wanted Get-Item() to accept a -Recurse switch when processing
     registry keys? Thats what this function does.
-    First we return the RegistryKey object returned by calling Get-Item().
+    First we return the Registry Key object returned by calling Get-Item().
     Then if the -Recurse switch is specified we additionally return the
     list of all the child keys by calling Get-ChildItem() -Recurse.
 
@@ -63,7 +63,7 @@ Note: Every key has a default un-named property. Specify "", $null or
 #>
 function Read-RegValue
 {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     param(
         [Parameter()]
         [ValidateNotNullOrEmpty()]
@@ -81,7 +81,7 @@ function Read-RegValue
         }
         else 
         {
-            $Value = $key.GetValue($Name)            
+            $Value = $key.GetValue($Name)
         }
     }
     else 
@@ -162,13 +162,13 @@ function Write-RegValue
 
 <#
 .SYNOPSIS
-Returns all the properties of a Registry key as Name/Value pairs in
-an [OrderedDictionary]
+Returns all the properties of a Registry key as Name/Value pairs as a 
+[Hashtable]
 #>
 function Get-RegPropertieS
 {
-    [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([OrderedDictionary])]
+    [CmdletBinding()]
+    [OutputType([Hashtable])]
     param(
         [Parameter()]
         [ValidateNotNullOrEmpty()]
@@ -180,7 +180,14 @@ function Get-RegPropertieS
     {
         foreach ($PropName in $Key.Property)
         {
-            $Value = Read-RegValue -key $key -Name $PropName
+            if ($PropName -eq "(default)")
+            {
+                $Value = $key.GetValue("")
+            }
+            else 
+            {
+                $Value = $key.GetValue($PropName)
+            }
             $PropertieS.Add($PropName, $Value)
         }    
     }
@@ -194,9 +201,9 @@ function Get-RegPropertieS
         {
             $Value = (Get-ItemProperty -Path $Key -Name $PropName).$PropName
             $PropertieS.Add($PropName, $Value)
-        }            
+        }
     }
-    $PropertieS
+    return $PropertieS
 }
 
 
@@ -212,7 +219,7 @@ The returns list of objects have the following properties
 #>
 function Search-RegPropValue
 {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     param(
         [Parameter()]
         [ValidateNotNullOrEmpty()]
@@ -273,7 +280,7 @@ The returned list of objects have the following properties
 #>
 function Search-RegPropName
 {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     param(
         [Parameter()]
         [ValidateNotNullOrEmpty()]
@@ -326,7 +333,7 @@ function Search-RegPropName
 .SYNOPSIS
 Ever wanted Get-Item() to accept a -Recurse switch when processing
 registry keys? Thats what this function does.
-First we return the RegistryKey object returned by calling Get-Item().
+First we return the Registry Key object returned by calling Get-Item().
 Then if the -Recurse switch is specified we additionally return the
 list of all the child keys by calling Get-ChildItem() -Recurse.
 
@@ -343,6 +350,9 @@ If specified then we call Get-ChildItem -Recurse to return the list
 of all the child keys. If multiple parent paths are specified then
 we call Get-ChildItem for each of them.
 
+.PARAMETER Depth
+Determines the number of child key levels to include in the recursion
+
 .EXAMPLE
 List all 'Edge' keys recursively, and output their property names & values:
 Get-RegKey -Path "HKCU:\Software\Microsoft\Edge" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
@@ -356,54 +366,49 @@ Get-RegKey -Path "HKCU:\Software\Microsoft\Edge" -Recurse -ErrorAction SilentlyC
 function Get-RegKey
 {
     [OutputType([Microsoft.Win32.RegistryKey],[array])]
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
         [ValidateNotNullOrEmpty()]
+        [Alias("Key")]
         $Path, 
 
         [Parameter(Position = 1)]
-        [switch] $Recurse
+        [switch] $Recurse,
+
+        [Parameter(Position = 2)]
+        [int] $Depth = -1
     )
 
-    begin
+    foreach ($item in $Path)
     {
-        $RootKeyS = @()
-    }
-
-    process
-    {
-        foreach ($item in $Path) 
+        if ($item -is [Microsoft.Win32.RegistryKey])
         {
-            if ($item -is [Microsoft.Win32.RegistryKey])
-            {
-                $RootKeyS += $item
-            }
-            else
-            {
-                if (!(Split-Path -Path $item -Qualifier -ErrorAction SilentlyContinue))
-                {
-                    $item = "Registry::$item"
-                }
-                $Key = Get-Item -Path $item -ErrorAction SilentlyContinue
-                if ($Key)
-                {
-                    $RootKeyS += $Key
-                }                
-            }
+            $Key = $item
         }
-    }
-
-    end
-    {
-        foreach ($Key in $RootKeyS) 
+        else
         {
-            $Key
+            if (!(Split-Path -Path $item -Qualifier -ErrorAction SilentlyContinue))
+            {
+                $item = "Registry::$item"
+            }
+            $Key = Get-Item -Path $item -ErrorAction SilentlyContinue
+        }
+
+        if ($Key)
+        {
+            Write-Output $Key
             if ($Recurse)
             {
-                Get-ChildItem -Path $Key.PsPath -Recurse
-            }                
+                if ($Depth -ge 0)
+                {
+                    Get-ChildItem -Path $Key.PsPath -Recurse -Depth $Depth
+                }
+                else 
+                {
+                    Get-ChildItem -Path $Key.PsPath -Recurse
+                }
+            }
         }
     }
 }
-
