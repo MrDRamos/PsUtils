@@ -67,6 +67,7 @@ function Read-RegValue
     param(
         [Parameter()]
         [ValidateNotNullOrEmpty()]
+        [Alias("Path")]
         $Key, 
 
         [Parameter()]
@@ -125,6 +126,9 @@ Note: Every key has a default un-named property. Specify "", $null or
 The new  data value to write. 
 Two data types have been tested: [string] and [int]
 An [int] value is mapped to a registry DWORD type.
+
+.PARAMETER Force
+Use the Force switch to create a new Key(and sub keys) if it does not exist yet.
 #>
 function Write-RegValue
 {
@@ -132,30 +136,52 @@ function Write-RegValue
     param(
         [Parameter()]
         [ValidateNotNullOrEmpty()]
+        [Alias("Path")]
         $Key, 
 
         [Parameter()]
         [string] $Name = "",
 
         [Parameter()]
-        [string] $Value
+        [string] $Value,
+
+        [Parameter()]
+        [switch] $Force
     )
 
     if (!$Name)
     {
         $Name = "(default)"
     }
+
     if ($key -is [Microsoft.Win32.RegistryKey])
     {
-        Set-ItemProperty -Path $Key.PsPath -Name $Name -Value $Value
+        $KeyPath = $Key.PsPath
     }
     else 
     {
-        if (!(Split-Path -Path $Key -Qualifier -ErrorAction SilentlyContinue))
+        if (Split-Path -Path $Key -Qualifier -ErrorAction SilentlyContinue)
         {
-            $Key = "Registry::$Key"
+            $KeyPath = $Key
         }
-        Set-ItemProperty -Path $Key -Name $Name -Value $Value
+        else
+        {
+            $KeyPath = "Registry::$Key"
+        }
+    }
+
+    $RegKey = Get-Item -Path $KeyPath -ErrorAction Ignore
+    if ($RegKey)
+    {
+        Set-ItemProperty -Path $KeyPath -Name $Name -Value $Value
+    }
+    else
+    {
+        if ($Force)
+        {
+            $null = New-Item -Path $KeyPath -Force:$Force
+        }
+        $null = New-ItemProperty -Path $KeyPath -Name $Name -Value $Value
     }
 }
 
@@ -172,6 +198,7 @@ function Get-RegPropertieS
     param(
         [Parameter()]
         [ValidateNotNullOrEmpty()]
+        [Alias("Path")]
         $Key
     )
 
@@ -223,6 +250,7 @@ function Search-RegPropValue
     param(
         [Parameter()]
         [ValidateNotNullOrEmpty()]
+        [Alias("Path")]
         $Key, 
 
         [Parameter()]
@@ -284,6 +312,7 @@ function Search-RegPropName
     param(
         [Parameter()]
         [ValidateNotNullOrEmpty()]
+        [Alias("Path")]
         $Key, 
 
         [Parameter()]
@@ -380,19 +409,19 @@ function Get-RegKey
         [int] $Depth = -1
     )
 
-    foreach ($item in $Path)
+    foreach ($PathI in $Path)
     {
-        if ($item -is [Microsoft.Win32.RegistryKey])
+        if ($PathI -is [Microsoft.Win32.RegistryKey])
         {
-            $Key = $item
+            $Key = $PathI
         }
         else
         {
-            if (!(Split-Path -Path $item -Qualifier -ErrorAction SilentlyContinue))
+            if (!(Split-Path -Path $PathI -Qualifier -ErrorAction SilentlyContinue))
             {
-                $item = "Registry::$item"
+                $PathI = "Registry::$PathI"
             }
-            $Key = Get-Item -Path $item -ErrorAction SilentlyContinue
+            $Key = Get-Item -Path $PathI -ErrorAction SilentlyContinue
         }
 
         if ($Key)
