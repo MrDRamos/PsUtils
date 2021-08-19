@@ -4,9 +4,8 @@
 #
 
 @{
-    
     # Script module or binary module file associated with this manifest.
-    RootModule = 'ProcessUsing.psm1'
+    RootModule = 'ProcessLockingFile.psm1'
     
     # Version number of this module.
     ModuleVersion = '1.0.0'
@@ -24,9 +23,12 @@
     PowerShellVersion = '5.1.14'
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
-    CmdletsToExport = @(
-        "Find-ProcessUsingPath"
-        "Stop-ProcessUsingPath"
+    CmdletsToExport   = @()
+
+    # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
+    FunctionsToExport = @(
+        "Find-ProcessLockingFile"
+        "Stop-ProcessLockingFile"
     )
 
     # Private data to pass to the module specified in RootModule/ModuleToProcess. This may also contain a PSData hashtable with additional module metadata used by PowerShell.
@@ -35,7 +37,7 @@
         PSData = @{
     
             # Tags applied to this module. These help with module discovery in online galleries.
-            Tags       = @("locked", "file", "directory", "handle", "kill", "process" )
+            Tags       = @("lock", "file", "directory", "handle", "kill", "process" )
     
             # A URL to the license for this module.
             # LicenseUri = ''
