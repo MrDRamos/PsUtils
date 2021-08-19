@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Utility to discover/kill processes that have open file handles to a file or folder.
+  Utility to discover/kill processes that have open handles to a file or folder.
 
   Find-ProcessLockingFile()
     This function retrieves process and user information that have a file handle open 
