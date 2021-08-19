@@ -195,4 +195,13 @@ function Stop-ProcessLockingFile
 
 
 #########   Initialize Module   #########
-$Script:HandleApp = "$PSScriptRoot\Handle.exe"
+$Script:HandleApp = "$PSScriptRoot\handle.exe"
+if (!(Test-Path -Path $Script:HandleApp))
+{
+    $ZipFile = "Handle.zip"
+    $ZipFilePath = "$PSScriptRoot\$ZipFile"
+    Remove-Item -Path $ZipFilePath -Force -ErrorAction SilentlyContinue
+    Invoke-RestMethod -Method Get -Uri "https://download.sysinternals.com/files/$ZipFile" -OutFile $ZipFilePath -ErrorAction Stop
+    Expand-Archive -Path $ZipFilePath -DestinationPath $PSScriptRoot -Force -ErrorAction Stop
+    Remove-Item -Path $ZipFilePath -ErrorAction Ignore
+}
