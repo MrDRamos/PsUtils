@@ -2,15 +2,14 @@
 .SYNOPSIS
   Utility to discover/kill processes that have open handles to a file or folder.
 
-  Find-ProcessLockingFile()
-    This function retrieves process and user information that have a file handle open 
-    to the specified path.
-    Example: Find-ProcessLockingFile -Path $Env:LOCALAPPDATA
-    Example: Find-ProcessLockingFile -Path $Env:LOCALAPPDATA | Get-Process
+  Find-LockingProcess()
+    Retrieves process information that has a file handle open to the specified path.
+    Example: Find-LockingProcess -Path $Env:LOCALAPPDATA
+    Example: Find-LockingProcess -Path $Env:LOCALAPPDATA | Get-Process
 
-  Stop-ProcessLockingFile()
-    This function kills all processes that have a file handle open to the specified path.
-    Example: Stop-ProcessLockingFile -Path $Home\Documents 
+  Stop-LockingProcess()
+    Kills all processes that have a file handle open to the specified path.
+    Example: Stop-LockingProcess -Path $Home\Documents 
 #>
 
 
@@ -126,15 +125,17 @@ function Kill_Process
 
 <#
 .SYNOPSIS
-This function retrieves process and user information that have a file handle open 
-to the specified path.
+Retrieves process information that has a file handle open to the specified path.
 We extract the output from the handle.exe utility from SysInternals:
 Link: https://docs.microsoft.com/en-us/sysinternals/downloads/handle
 
+.Example 
+Find-LockingProcess -Path $Env:LOCALAPPDATA
+
 .Example
-Find-ProcessLockingFile -Path $Env:LOCALAPPDATA
+ Find-LockingProcess -Path $Env:LOCALAPPDATA | Get-Process
 #>
-function Find-ProcessLockingFile
+function Find-LockingProcess
 {
     [OutputType([array])]
     [CmdletBinding()]
@@ -175,12 +176,12 @@ function Find-ProcessLockingFile
 
 <#
 .SYNOPSIS
-Stop all processes that have a file handle open to the specified path.
+Kills all processes that have a file handle open to the specified path.
 
 .Example
-Stop-ProcessLockingFile -Path $Home\Documents 
+Stop-LockingProcess -Path $Home\Documents 
 #>
-function Stop-ProcessLockingFile
+function Stop-LockingProcess
 {
     [CmdletBinding()]
     param (
@@ -188,20 +189,36 @@ function Stop-ProcessLockingFile
         [object] $Path
     )
 
-    $ProcS = Find-ProcessLockingFile -Path $Path | Sort-Object -Property Pid -Unique
+    $ProcS = Find-LockingProcess -Path $Path | Sort-Object -Property Pid -Unique
     Kill_Process -ProcessId $ProcS.Pid
 }
 
 
 
 #########   Initialize Module   #########
-$Script:HandleApp = "$PSScriptRoot\handle.exe"
-if (!(Test-Path -Path $Script:HandleApp))
+function DownloadHandleApp($Path)
 {
     $ZipFile = "Handle.zip"
-    $ZipFilePath = "$PSScriptRoot\$ZipFile"
-    Remove-Item -Path $ZipFilePath -Force -ErrorAction SilentlyContinue
-    Invoke-RestMethod -Method Get -Uri "https://download.sysinternals.com/files/$ZipFile" -OutFile $ZipFilePath -ErrorAction Stop
-    Expand-Archive -Path $ZipFilePath -DestinationPath $PSScriptRoot -Force -ErrorAction Stop
-    Remove-Item -Path $ZipFilePath -ErrorAction Ignore
+    $ZipFilePath = "$Path\$ZipFile"
+    $Uri = "https://download.sysinternals.com/files/$ZipFile"
+    try 
+    {
+        Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+        $null = New-Item -ItemType Directory -Path $Path -Force -ErrorAction Stop
+        Invoke-RestMethod -Method Get -Uri $Uri -OutFile $ZipFilePath -ErrorAction Stop
+        Expand-Archive -Path $ZipFilePath -DestinationPath $Path -Force -ErrorAction Stop
+        Remove-Item -Path $ZipFilePath -ErrorAction SilentlyContinue
+    }
+    catch 
+    {
+        Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+        Throw "Failed to download dependency: handle.exe from: $Uri"
+    }
+}
+
+$Script:HandleDir = "$PSScriptRoot\handle"
+$Script:HandleApp = "$HandleDir\handle.exe"
+if (!(Test-Path -Path $Script:HandleApp))
+{
+    DownloadHandleApp -Path $HandleDir
 }
