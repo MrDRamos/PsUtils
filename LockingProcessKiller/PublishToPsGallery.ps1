@@ -25,6 +25,20 @@ if (Test-Path -Path "$PkgDir\handle")
     Remove-Item -Path "$PkgDir\handle" -Recurse -Force -ErrorAction Stop
 }
 
+# Use secrets stored in localy by Microsoft.PowerShell.Management module: https://github.com/powershell/secretmanagement
+$PsGalleryPAT = $null
+if (Get-Module -Name Microsoft.PowerShell.Management -ListAvailable)
+{
+    $PsGalleryPAT = Get-Secret -Name "PsGallery.PAT" -AsPlainText -ErrorAction Inquire
+}
+if (!$PsGalleryPAT)
+{
+    $PsGalleryPAT = Read-Host -Prompt "Enter PsGallery PAT oy2cesmzn..."
+}
 
-$PsGalleryKey = "oy2cesm" #Todo Get using 
-Publish-Module -Path $PkgDir -NuGetApiKey $PsGalleryKey
+Write-Host "Publish-Module -Path $PkgDir -NuGetApiKey $PsGalleryPAT" -ForegroundColor Yellow
+$UserQry = Read-Host "Ready to publish to PsGallerly [Y] Yes [N] No"
+if ($UserQry -eq "y")
+{
+    Publish-Module -Path $PkgDir -NuGetApiKey $PsGalleryPAT
+}
