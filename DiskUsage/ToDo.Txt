@@ -1,17 +1,17 @@
 <#
 TODO:
-!!! DU behavior differnces: TODO: Refactor Measure-DiskUsage accordingly
+!!! DU behavior differenceses: TODO: Refactor Measure-DiskUsage accordingly
   1) DU with no arguments:
-     Outputs 1-Line for each recursed directory, wich includes size of all
+     Outputs 1-Line for each recursed directory, which includes size of all
      files in that directory + all the files in its subdirectories.
     -All
       Means report line-item for each file
-      Note: Sumerize and -All parameters are mutually excusive
+      Note: -Summarize and -All parameters are mutually exclusive
     -SeparateDirs  
-     Outputs 1-Line for each recursed directory, wich includes size of all
-     files in that directory, but does NOT indlude files in any subdirectories.
+     Outputs 1-Line for each recursed directory, which includes size of all
+     files in that directory, but does NOT include files in any subdirectories.
      Note: The default includes the subdirectories
-     This is where the -Total paramters makes sence to output the Cumulative total
+     This is where the -Total parameters makes sense to output the Cumulative total
      of the last -Path directory
     -All, -SeparateDirs, -Total: can be combined =>
      First get output for each file in a folder
@@ -20,17 +20,17 @@ TODO:
      Get output for each file in -Path
      Get get subtotal for -Path
      Get Cumulative TOTAL
-  2) Include a colums with the Powershell directory item. This way the caller
+  2) Include a column with the PowerShell directory item. This way the caller
      can know if an entry is a file or directory
     
   3) DU reports KB size on disk, not apparent bytes in file
-     We should a both colums
+     We should a both columns
   4) DU always includes the files of the top-level path.     
   5) DU reports the directory name relative to the provided -Path parameter
 
 -B[K|M|G|T] 
 Scale the reported Size; e.g.'-BM' prints Size in Megabytes
-TODO: Refactor Show-DiskUsage accordingy
+TODO: Refactor Show-DiskUsage according
 
 -Time
 Include colums with LastWriteTime, i.e. The time of the last modification of any 
