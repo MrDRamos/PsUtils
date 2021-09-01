@@ -15,40 +15,40 @@ function Get-DirectoryStats($Path)
     }
 
     $Dir = Get-Item -Path $Path -ErrorAction $ErrorActionPreference
-    $InfoStack =New-Object System.Collections.Stack
+    $InfoStack = New-Object System.Collections.Stack
     $ParentStats = [PSCustomObject]@{
-        Size = 0
-        TotalSize = 0
-        Files = 0
-        TotalFiles = 0
-        Folders = 0
-        TotalFolders = 0
-        Name = $Dir.FullName
+        FileLength    = 0
+        TotFileLength = 0
+        Files         = 0
+        TotFiles      = 0
+        Dirs          = 0
+        TotDirs       = 0
+        Name          = $Dir.FullName
     }
     
     foreach ($Dir in $DirS) 
     {
         [array]$FileS = Get-ChildItem -Path $Dir -File -Include $Include -Exclude $Exclude -ErrorAction $ErrorActionPreference
-        $BytesUsed = 0
+        $FileLen = 0
         foreach ($File in $FileS) 
         {
-            $BytesUsed += $File.Length
+            $FileLen += $File.Length
         }
 
         if ($ParentStats.Name -eq $Dir.Parent.FullName)
         {
-            $ParentStats.TotalSize += $BytesUsed
-            $ParentStats.TotalFiles += $FileS.Count
-            $ParentStats.Folders++
-            $ParentStats.TotalFolders++
+            $ParentStats.TotFileLength += $FileLen
+            $ParentStats.TotFiles += $FileS.Count
+            $ParentStats.Dirs++
+            $ParentStats.TotDirs++
             $Usage = [PSCustomObject]@{
-                Size = $BytesUsed
-                TotalSize = $BytesUsed
-                Files = $FileS.Count
-                TotalFiles = $FileS.Count
-                Folders = 0
-                TotalFolders = 0
-                Name = $Dir.FullName
+                FileLength    = $FileLen
+                TotFileLength = $FileLen
+                Files         = $FileS.Count
+                TotFiles      = $FileS.Count
+                Dirs          = 0
+                TotDirs       = 0
+                Name          = $Dir.FullName
             }    
             Write-Output $Usage
         }
@@ -57,32 +57,32 @@ function Get-DirectoryStats($Path)
             if ($ParentStats.Name -eq $Dir.FullName)
             {   
                 # Comming back to Parent-folder - Accumulate subdir info
-                $ParentStats.Size += $BytesUsed
-                $ParentStats.TotalSize += $BytesUsed
+                $ParentStats.FileLength += $FileLen
+                $ParentStats.TotFileLength += $FileLen
                 $ParentStats.Files += $FileS.Count
-                $ParentStats.TotalFiles += $FileS.Count
-                $ParentStats.Folders++
-                $ParentStats.TotalFolders++
+                $ParentStats.TotFiles += $FileS.Count
+                $ParentStats.Dirs++
+                $ParentStats.TotDirs++
                 Write-Output $ParentStats
                 if ($InfoStack.Peek().Name -eq $Dir.Parent.FullName)
                 {
                     $BaseParentStats = $InfoStack.Pop()
-                    $BaseParentStats.TotalSize += $ParentStats.TotalSize
-                    $BaseParentStats.TotalFiles += $ParentStats.TotalFiles
-                    $BaseParentStats.Folders++
-                    $BaseParentStats.TotalFolders += 1+ $ParentStats.TotalFolders
+                    $BaseParentStats.TotFileLength += $ParentStats.TotFileLength
+                    $BaseParentStats.TotFiles += $ParentStats.TotFiles
+                    $BaseParentStats.Dirs++
+                    $BaseParentStats.TotDirs += 1 + $ParentStats.TotDirs
                     $ParentStats = $BaseParentStats    
                 }
                 else # No parent in stack
                 {
                     $BaseParentStats = [PSCustomObject]@{
-                        Size = 0
-                        TotalSize = $ParentStats.TotalSize
-                        Files = 0
-                        TotalFiles = $ParentStats.TotalFiles
-                        Folders = 0
-                        TotalFolders = $ParentStats.TotalFolders
-                        Name = $Dir.Parent.FullName
+                        FileLength    = 0
+                        TotFileLength = $ParentStats.TotFileLength
+                        Files         = 0
+                        TotFiles      = $ParentStats.TotFiles
+                        Dirs          = 0
+                        TotDirs       = $ParentStats.TotDirs
+                        Name          = $Dir.Parent.FullName
                     }                        
                     $ParentStats = $BaseParentStats    
                 }
@@ -92,23 +92,23 @@ function Get-DirectoryStats($Path)
                 # Going deeper into Sub-folder
                 $InfoStack.Push($ParentStats)              
                 $ParentStats = [PSCustomObject]@{
-                    Size = $BytesUsed
-                    TotalSize = $BytesUsed
-                    Files = $FileS.Count
-                    TotalFiles = $FileS.Count
-                    Folders = 0
-                    TotalFolders = 0
-                    Name = $Dir.FullName
+                    FileLength    = $FileLen
+                    TotFileLength = $FileLen
+                    Files         = $FileS.Count
+                    TotFiles      = $FileS.Count
+                    Dirs          = 0
+                    TotDirs       = 0
+                    Name          = $Dir.FullName
                 }
                 Write-Output $ParentStats
                 $ParentStats = [PSCustomObject]@{
-                    Size = 0
-                    TotalSize = $BytesUsed
-                    Files = 0
-                    TotalFiles = $FileS.Count
-                    Folders = 0
-                    TotalFolders = 0
-                    Name = $Dir.Parent.FullName
+                    FileLength    = 0
+                    TotFileLength = $FileLen
+                    Files         = 0
+                    TotFiles      = $FileS.Count
+                    Dirs          = 0
+                    TotDirs       = 0
+                    Name          = $Dir.Parent.FullName
                 }
             }
         }    
@@ -121,14 +121,14 @@ function Get-DirectoryStats($Path)
     
     # Finally add files root follder
     [array]$FileS = Get-ChildItem -Path $Path -File -Include $Include -Exclude $Exclude -ErrorAction $ErrorActionPreference
-    $BytesUsed = 0
+    $FileLen = 0
     foreach ($File in $FileS) 
     {
-        $BytesUsed += $File.Length
+        $FileLen += $File.Length
     }
-    $ParentStats.Size += $BytesUsed
-    $ParentStats.TotalSize += $BytesUsed
-    $ParentStats.Files+= $FileS.Count
-    $ParentStats.TotalFiles+= $FileS.Count
+    $ParentStats.FileLength += $FileLen
+    $ParentStats.TotFileLength += $FileLen
+    $ParentStats.Files += $FileS.Count
+    $ParentStats.TotFiles += $FileS.Count
     Write-Output $ParentStats
 }
