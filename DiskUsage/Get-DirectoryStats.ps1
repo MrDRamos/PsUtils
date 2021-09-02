@@ -39,7 +39,7 @@ function Get-DirectoryStats
 
     if ($Include -or $Exclude)
     {
-        # FileS order: Alphabeticlly sorted in descending order (Sub-Dirs before files), takes ~8x longer
+        # FileS order: Alphabeticlly sorted in descending order (Sub-Dirs & files), takes ~8x longer
         [array]$FileS = Get-ChildItem -Path $Path -Include $Include -Exclude $Exclude -Recurse -Force -ErrorAction $ErrorActionPreference
     }
     else 
@@ -142,7 +142,8 @@ function Get-DirectoryStats
                 }
                 Write-Output $WorkDirStats
 
-                # Case: File is a new sibling directory i.e. a with same parent as $Dir
+                # Case: File is a new sibling directory i.e. a with same parent as $Dir. 
+                # Only get this case with -Exclude/Inlcude option -i.e. when stepping into folders before listing them all
                 if ($WorkDirStats.Parent -eq $Dir)
                 {
                     if ($File.PSIsContainer)
@@ -220,7 +221,14 @@ function Get-DirectoryStats
                                 Write-Output $SubStats        
                             }
                         }
-                        Write-Output $WorkDirStats              
+                        if ($WorkDirStats.Name -ne $Dir)
+                        {
+                            Write-Output $WorkDirStats
+                        }
+                        else 
+                        {
+                            # Dont Write-Output if we are not yet done preccesing all entries in work-dir = $Dir 
+                        }
 
                         $WorkDirStats = $ParentDirStats[$Dir]
                     } until ($WorkDirStats)
