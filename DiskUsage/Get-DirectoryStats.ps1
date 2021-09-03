@@ -8,18 +8,7 @@ function Get-DirectoryStats
         [object] $Path = ".",
 
         [Parameter()]
-        [array] $Include = $null,
-
-        [Parameter()]
-        [array] $Exclude = $null,
-
-        [Parameter()]
-        [Alias("a")]
-        [switch] $All,
-
-        [Parameter()]
-        [Alias("d")]
-        [int] $Depth = 1000
+        [array] $Exclude = $null
     )
 
     $RootDir = Get-Item -Path $Path -ErrorAction $ErrorActionPreference
@@ -40,7 +29,7 @@ function Get-DirectoryStats
     if ($Include -or $Exclude)
     {
         # FileS order: Alphabeticlly sorted in descending order (Sub-Dirs & files), takes ~8x longer
-        [array]$FileS = Get-ChildItem -Path $Path -Include $Include -Exclude $Exclude -Recurse -Force -ErrorAction $ErrorActionPreference
+        [array]$FileS = Get-ChildItem -Path $Path -Exclude $Exclude -Recurse -Force -ErrorAction $ErrorActionPreference
     }
     else 
     {
@@ -122,6 +111,26 @@ function Get-DirectoryStats
                     $WorkDirStats.TotFiles++
                 }
             }
+            <#
+            elseif ($Parent.IndexOf($WorkDirStats.Name, [StringComparison]::OrdinalIgnoreCase) -eq 0)
+            {
+                # Only relavent when $Include paramters caused skipping a subdir
+                $WorkDirStats = [PSCustomObject]@{
+                    FileLength    = $File.Length
+                    TotFileLength = $File.Length
+                    Files         = 1
+                    TotFiles      = 1
+                    Dirs          = 0
+                    TotDirs       = 0
+                    Name          = $Dir
+                    Parent        = $Parent
+                }
+                $DirStats[$Dir] = $WorkDirStats
+                $InfoStack.Push($DirStats)
+                $DirStats = @{}
+            }
+            #>
+
             else 
             {
                 # Return WorkDir back to one of its parent directories, or siblings(=Dir with same parent)
@@ -142,8 +151,8 @@ function Get-DirectoryStats
                 }
                 Write-Output $WorkDirStats
 
-                # Case: File is a new sibling directory i.e. a with same parent as $Dir. 
-                # Only get this case with -Exclude/Inlcude option -i.e. when stepping into folders before listing them all
+                # Case: File is a new sibling directory i.e. with same parent as $Dir. 
+                # Only get this case with -Exclude/Inlcude option -i.e. when proceccing a file before its parent folder
                 if ($WorkDirStats.Parent -eq $Dir)
                 {
                     if ($File.PSIsContainer)
