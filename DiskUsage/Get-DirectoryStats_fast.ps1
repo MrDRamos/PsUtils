@@ -1,5 +1,5 @@
 
-function Get-DirectoryStats
+function Get-DirectoryStats_fast
 {
     [CmdletBinding()]
     [OutputType([array])]
