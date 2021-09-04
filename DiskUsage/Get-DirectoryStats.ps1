@@ -1,5 +1,155 @@
 
-function Get-DirectoryStats
+class DirStat
+{
+    <#
+    [int64] $DiskSpace
+    [int64] $TotDiskSpace
+    [int64] $FileLength
+    [int64] $TotFileLength
+    [int]   $Files
+    [int]   $TotFiles
+    [int]   $Dirs
+    [int]   $TotDirs
+    #>
+    [int64] $DiskSpace
+    [int64] $FileLength
+    [int]   $Files
+    [int]   $Dirs
+    [int64] $TotDiskSpace
+    [int64] $TotFileLength
+    [int]   $TotFiles
+    [int]   $TotDirs
+    [string] $Name
+    [System.IO.DirectoryInfo] $Parent
+
+    hidden [int] $BlockSize
+
+    DirStat([System.IO.FileSystemInfo]$DirInfo)
+    {
+        $this.BlockSize = (Get-Volume -FilePath $DirInfo.FullName).AllocationUnitSize
+        $this.InitDirInfo($DirInfo)
+    }
+
+    DirStat([System.IO.FileSystemInfo]$DirInfo, [int] $BlockSize)
+    {
+        $this.BlockSize = $BlockSize
+        $this.InitDirInfo($DirInfo)
+    }
+
+    DirStat([string]$Parent, [string]$DirName, [int] $BlockSize)
+    {
+        $this.BlockSize = $BlockSize
+        $this.Name = "{0}{1}{2}" -f $Parent, [System.IO.Path]::DirectorySeparatorChar, $DirName
+        $this.Parent = $Parent
+    }
+
+    hidden [void] InitDirInfo([System.IO.FileSystemInfo]$DirInfo)
+    {
+        if ($DirInfo.PSIsContainer)
+        {
+            $this.Name = $DirInfo.FullName
+            $this.Parent = $DirInfo.Parent
+        }
+        else 
+        {
+            $this.Name = $DirInfo.FullName
+            $this.Parent = $DirInfo.Directory
+        }
+
+    }
+
+
+    [void] AddDirStat([DirStat] $SubDirStat)
+    {
+        $this.TotDiskSpace += $SubDirStat.TotDiskSpace
+        $this.TotFileLength += $SubDirStat.TotFileLength
+        $this.TotFiles += $SubDirStat.TotFiles
+        $this.Dirs++
+        $this.TotDirs += 1+ $SubDirStat.TotDirs
+    }
+
+
+    [void] AddDirInfo([System.IO.FileSystemInfo] $DirItem)
+    {
+        if ($DirItem.PSIsContainer)
+        {
+            $this.Dirs++
+        }
+        else 
+        {
+            [int64] $ByteLen = $DirItem.Length
+            [int64] $Space = 0           
+            # The data of 'very small' files are stored together with the filename in the MFT, and use no additional storage blocks.
+            # The data capacity of the MFT is OS dependent but not very well defined. 600 seems to be a good lower bound on Win10.
+            # A file is rewritten (and locked in) to use storage blocks once the data added exceeds the MFT capacity.
+            # TODO: Find API that tells us where the data is sored MFT or blocks. Or API that returns the actual space used.
+            if (($ByteLen -gt 600) -or ($DirItem.LastWriteTime -ne $DirItem.CreationTime))
+            {
+                $Space = [int64](($ByteLen + $this.BlockSize - 1) / $this.BlockSize) * $this.BlockSize
+            }
+            $this.DiskSpace += $Space
+            $this.FileLength += $ByteLen
+            $this.Files++
+
+            $this.TotDiskSpace += $Space
+            $this.TotFileLength += $ByteLen
+            $this.TotFiles++
+        }
+    }
+
+}
+
+
+
+function Find-DirNodeConnection([string]$FromPath, [string]$ToPath)
+{
+    [string[]]$FromDirS = $FromPath.Split([System.IO.Path]::DirectorySeparatorChar)
+    [string[]]$ToDirS = $ToPath.Split([System.IO.Path]::DirectorySeparatorChar)
+    [int]$PopCount = 0
+    [int]$MatchCount = [math]::Min($FromDirS.Count, $ToDirS.Count)
+    for ($i = 0; $i -lt $MatchCount; $i++) 
+    {
+        if ($FromDirS[$i] -ne $ToDirS[$i])
+        {
+            $PopCount = $FromDirS.Count - $i
+            $MatchCount = $i
+            break
+        }
+    }
+
+    [string[]]$PushDirS = $null
+    if ($MatchCount -lt $ToDirS.Count)
+    {
+        $PushDirS = $ToDirS[$MatchCount..$($ToDirS.Count - 1)]
+    }
+
+    return ($PopCount, $PushDirS)
+}
+
+<#
+$Dir1 = "C:\Users"
+$Dir2 = "C:\Users\David\Documents"
+$Dir3 = "C:\Users\David\AppData\Local"
+
+$Dir4 = "C:\Users\David\Documents\Repos\LabelPaq\Pascal\FU_Syst"
+$Dir5 = "C:\Users\David\Documents\Repos\LabelPaq\Pascal\FU_Shift"
+
+Find-DirNodeConnection -FromPath $Dir1 -ToPath $Dir1
+"1==2"
+Find-DirNodeConnection -FromPath $Dir1 -ToPath $Dir2
+Find-DirNodeConnection -FromPath $Dir2 -ToPath $Dir1
+"2==3"
+Find-DirNodeConnection -FromPath $Dir2 -ToPath $Dir3
+Find-DirNodeConnection -FromPath $Dir3 -ToPath $Dir2
+"4==5"
+Find-DirNodeConnection -FromPath $Dir4 -ToPath $Dir5
+
+exit
+#>
+
+
+
+function Get-DirectoryStats_0
 {
     [CmdletBinding()]
     [OutputType([array])]
@@ -8,296 +158,73 @@ function Get-DirectoryStats
         [object] $Path = ".",
 
         [Parameter()]
+        [array] $Include = $null,
+
+        [Parameter()]
         [array] $Exclude = $null
     )
-
-    $RootDir = Get-Item -Path $Path -ErrorAction $ErrorActionPreference
+    
+    $RootDir = Get-Item -Path $Path -ErrorAction "Stop"
+    $BlockSize = (Get-Volume -FilePath $RootDir).AllocationUnitSize
+    $DirStats = [DirStat]::new($RootDir, $BlockSize)
     $InfoStack = New-Object System.Collections.Stack
-    $WorkDirStats = [PSCustomObject]@{
-        FileLength    = 0
-        TotFileLength = 0
-        Files         = 0
-        TotFiles      = 0
-        Dirs          = 0
-        TotDirs       = 0
-        Name          = $RootDir.FullName
-        Parent        = $RootDir.Parent.FullName
-    }
-    $InfoStack.Push(@{$RootDir.FullName = $WorkDirStats })
-    $DirStats = @{}
 
     if ($Include -or $Exclude)
     {
         # FileS order: Alphabeticlly sorted in descending order (Sub-Dirs & files), takes ~8x longer
-        [array]$FileS = Get-ChildItem -Path $Path -Exclude $Exclude -Recurse -Force -ErrorAction $ErrorActionPreference
+        [array]$FileS = Get-ChildItem -File -Path $RootDir -Include $Include -Exclude $Exclude -Recurse -Force -ErrorAction $ErrorActionPreference
     }
-    else 
+    else
     {
         # FileS order: Dont step into sub-dir until first listing all entries (Sub-Dirs then files) in the work-dir
-        [array]$FileS = Get-ChildItem -Path $Path -Recurse -Force -ErrorAction $ErrorActionPreference    
+        [array]$FileS = Get-ChildItem -File -Path $RootDir -Recurse -Force -ErrorAction $ErrorActionPreference    
     }
 
-    
-    foreach ($File in $FileS) 
+    foreach ($File in $FileS)
     {
-        if ($File.PSIsContainer)
+        ##//TODO: Find-DirNodeConnection() takes 50% of the total process time
+        $PopCount, $PushDirS = Find-DirNodeConnection -FromPath $DirStats.Name -ToPath $File.Directory.FullName
+
+        for ($i = 0; $i -lt $PopCount; $i++)
         {
-            $Dir = $File.Parent.FullName
-            $Parent = $File.Parent.Parent.FullName
+            $ParentStats = $InfoStack.Pop()
+            $ParentStats.AddDirStat($DirStats)
+            Write-Output $DirStats
+            $DirStats = $ParentStats
         }
-        else 
+        foreach ($SubDir in $PushDirS)
         {
-            $Dir = $File.Directory.FullName
-            $Parent = $File.Directory.Parent.FullName
+            $InfoStack.Push($DirStats)
+            $DirStats = [DirStat]::new($DirStats.Name, $SubDir, $BlockSize)
         }
-
-        if ($Dir -eq $WorkDirStats.Name)
-        {
-            # Same WorkDir
-            if ($File.PSIsContainer)
-            {
-                $WorkDirStats.Dirs++
-                $WorkDirStats.TotDirs++
-                $SubDirStats = [PSCustomObject]@{
-                    FileLength    = 0
-                    TotFileLength = 0
-                    Files         = 0
-                    TotFiles      = 0
-                    Dirs          = 0
-                    TotDirs       = 0
-                    Name          = $File.FullName
-                    Parent        = $Dir
-                }
-                $DirStats[$File.FullName] = $SubDirStats
-            }
-            else 
-            {
-                $WorkDirStats.FileLength += $File.Length
-                $WorkDirStats.TotFileLength += $File.Length
-                $WorkDirStats.Files++
-                $WorkDirStats.TotFiles++
-            }
-        }
-        else
-        {
-            if ($Parent -eq $WorkDirStats.Name)
-            {
-                # Advance WorkDir deeper into one of its sub-directories = $Dir
-                $WorkDirStats = $DirStats[$Dir]
-                $InfoStack.Push($DirStats)
-                $DirStats = @{}
-
-                if ($File.PSIsContainer)
-                {
-                    $WorkDirStats.Dirs++
-                    $WorkDirStats.TotDirs++
-                    $SubDirStats = [PSCustomObject]@{
-                        FileLength    = 0
-                        TotFileLength = 0
-                        Files         = 0
-                        TotFiles      = 0
-                        Dirs          = 0
-                        TotDirs       = 0
-                        Name          = $File.FullName
-                        Parent        = $Dir
-                    }
-                    $DirStats[$File.FullName] = $SubDirStats
-                }
-                else 
-                {
-                    $WorkDirStats.FileLength += $File.Length
-                    $WorkDirStats.TotFileLength += $File.Length
-                    $WorkDirStats.Files++
-                    $WorkDirStats.TotFiles++
-                }
-            }
-            <#
-            elseif ($Parent.IndexOf($WorkDirStats.Name, [StringComparison]::OrdinalIgnoreCase) -eq 0)
-            {
-                # Only relavent when $Include paramters caused skipping a subdir
-                $WorkDirStats = [PSCustomObject]@{
-                    FileLength    = $File.Length
-                    TotFileLength = $File.Length
-                    Files         = 1
-                    TotFiles      = 1
-                    Dirs          = 0
-                    TotDirs       = 0
-                    Name          = $Dir
-                    Parent        = $Parent
-                }
-                $DirStats[$Dir] = $WorkDirStats
-                $InfoStack.Push($DirStats)
-                $DirStats = @{}
-            }
-            #>
-
-            else 
-            {
-                # Return WorkDir back to one of its parent directories, or siblings(=Dir with same parent)
-                if ($DirStats.Count)
-                {
-                    foreach ($SubStats in $DirStats.Values)
-                    {
-                        $WorkDirStats.TotFileLength += $SubStats.TotFileLength
-                        $WorkDirStats.TotFiles += $SubStats.TotFiles
-                        $WorkDirStats.TotDirs += $SubStats.TotDirs
-
-                        if (($SubStats.Files -eq 0) -and ($SubStats.Dirs -eq 0))
-                        {
-                            # Because we never step into empty dirs, handle that case here
-                            Write-Output $SubStats        
-                        }
-                    }
-                }
-                Write-Output $WorkDirStats
-
-                # Case: File is a new sibling directory i.e. with same parent as $Dir. 
-                # Only get this case with -Exclude/Inlcude option -i.e. when proceccing a file before its parent folder
-                if ($WorkDirStats.Parent -eq $Dir)
-                {
-                    if ($File.PSIsContainer)
-                    {
-                        $DirStats = $InfoStack.Pop()
-                        $SubDirStats = [PSCustomObject]@{
-                            FileLength    = 0
-                            TotFileLength = 0
-                            Files         = 0
-                            TotFiles      = 0
-                            Dirs          = 0
-                            TotDirs       = 0
-                            Name          = $File.FullName
-                            Parent        = $Dir
-                        }
-                        $DirStats[$File.FullName] = $SubDirStats
-
-                        $WorkDirStats = $InfoStack.Peek()[$Dir]
-                        $WorkDirStats.Dirs++
-                        $WorkDirStats.TotDirs++
-                        continue
-                    }
-                }
-
-                # Case: Set WorkDir to sibling i.e. a directiry with same parent as $Dir
-                $WorkDirStats = $InfoStack.Peek()[$Dir]                   
-                if ($WorkDirStats)
-                {
-                    $DirStats = @{}
-
-                    if ($File.PSIsContainer)
-                    {
-                        $WorkDirStats.Dirs++
-                        $WorkDirStats.TotDirs++
-                        $SubDirStats = [PSCustomObject]@{
-                            FileLength    = 0
-                            TotFileLength = 0
-                            Files         = 0
-                            TotFiles      = 0
-                            Dirs          = 0
-                            TotDirs       = 0
-                            Name          = $File.FullName
-                            Parent        = $Dir
-                        }
-                        $DirStats[$File.FullName] = $SubDirStats
-                    }
-                    else 
-                    {
-                        $WorkDirStats.FileLength += $File.Length
-                        $WorkDirStats.TotFileLength += $File.Length
-                        $WorkDirStats.Files++
-                        $WorkDirStats.TotFiles++
-                    }
-                }
-                else
-                {    
-                    # Case: Set WorkDir back to a parent thats one or more levels up in the hierarchy
-                    do
-                    {
-                        $DirStats = $InfoStack.Pop()
-                        $ParentDirStats = $InfoStack.Peek()
-                        foreach ($SubStats in $DirStats.Values)
-                        {
-                            if (!$WorkDirStats)
-                            {
-                                $WorkDirStats = $ParentDirStats[$SubStats.Parent]
-                            }
-                            $WorkDirStats.TotFileLength += $SubStats.TotFileLength
-                            $WorkDirStats.TotFiles += $SubStats.TotFiles
-                            $WorkDirStats.TotDirs += $SubStats.TotDirs
-
-                            if (($SubStats.Files -eq 0) -and ($SubStats.Dirs -eq 0))
-                            {
-                                # Because we never step into empty dirs, handle that case here
-                                Write-Output $SubStats        
-                            }
-                        }
-                        if ($WorkDirStats.Name -ne $Dir)
-                        {
-                            Write-Output $WorkDirStats
-                        }
-                        else 
-                        {
-                            # Dont Write-Output if we are not yet done preccesing all entries in work-dir = $Dir 
-                        }
-
-                        $WorkDirStats = $ParentDirStats[$Dir]
-                    } until ($WorkDirStats)
-                    $DirStats = @{}
-
-                    if ($File.PSIsContainer)
-                    {
-                        $WorkDirStats.Dirs++
-                        $WorkDirStats.TotDirs++
-                        $SubDirStats = [PSCustomObject]@{
-                            FileLength    = 0
-                            TotFileLength = 0
-                            Files         = 0
-                            TotFiles      = 0
-                            Dirs          = 0
-                            TotDirs       = 0
-                            Name          = $File.FullName
-                            Parent        = $Dir
-                        }
-                        $DirStats[$File.FullName] = $SubDirStats
-                    }
-                    else 
-                    {
-                        $WorkDirStats.FileLength += $File.Length
-                        $WorkDirStats.TotFileLength += $File.Length
-                        $WorkDirStats.Files++
-                        $WorkDirStats.TotFiles++
-                    }
-                }
-            }
-        }
+        $DirStats.AddDirInfo($File)
     }
 
-    Write-Output $WorkDirStats
-    if ($WorkDirStats.Name -ne $RootDir.FullName)
+    while ($InfoStack.Count)
     {
-        $Dir = $RootDir.FullName
-        $WorkDirStats = $null
-        do
-        {
-            $DirStats = $InfoStack.Pop()
-            $ParentDirStats = $InfoStack.Peek()
-            foreach ($SubStats in $DirStats.Values)
-            {
-                if (!$WorkDirStats)
-                {
-                    $WorkDirStats = $ParentDirStats[$SubStats.Parent]
-                }
-                $WorkDirStats.TotFileLength += $SubStats.TotFileLength
-                $WorkDirStats.TotFiles += $SubStats.TotFiles
-                $WorkDirStats.TotDirs += $SubStats.TotDirs
-
-                if (($SubStats.Files -eq 0) -and ($SubStats.Dirs -eq 0))
-                {
-                    # Because we never step into empty dirs, handle that case here
-                    Write-Output $SubStats        
-                }
-            }
-            Write-Output $WorkDirStats
-            $WorkDirStats = $ParentDirStats[$Dir]
-        } until ($WorkDirStats)
+        $ParentStats = $InfoStack.Pop()
+        $ParentStats.AddDirStat($DirStats)
+        Write-Output $DirStats
+        $DirStats = $ParentStats         
     }
+    Write-Output $DirStats
 }
+
+
+$Path = "$Home\documents\repos\LabelPaq" #\Pascal"
+#$Path = "$Home\documents\repos" #\PsUtils"
+#$Path = "C:\Install"
+#$Path = "$Home\documents\repos\LabelPaq\Pascal"
+
+<#
+(Measure-Command {
+        $DirStats = Get-DirectoryStats_0 -Path $Path
+    }).Milliseconds
+$DirStats.Count
+exit
+#>
+
+$DirStats = Get-DirectoryStats_0 -Path $Path #-Include "*.pas"
+$DirStats | Sort-Object -Descending Name | Format-Table FileLength, TotFileLength, Files, TotFiles, Dirs, TotDirs, Name | Out-String -Width 1024 > "C:\Users\David\Documents\Repos\PsUtils\Wip\x.txt"
+$DirStats | Format-Table FileLength, TotFileLength, Files, TotFiles, Dirs, TotDirs, Name | Out-String -Width 1024 > "C:\Users\David\Documents\Repos\PsUtils\Wip\xx.txt"
+$DirStats | Format-Table
