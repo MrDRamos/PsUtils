@@ -225,6 +225,71 @@ function Find-DirNodeConnection4([string]$FromPath, [string]$ToPath, [int]$Offse
     return ($PopCount, $PushDirS)
 }
 
+
+Add-Type -Language CSharp @"
+using System; 
+using System.Collections.Generic;
+
+namespace CSharpCode
+{
+    public static class Helper
+    {
+        public static (int, string[]) GetNodeRoute(string from, string dest, int offset = 0)
+        {
+          int matchPos = 0;
+          int maxPos = Math.Min(from.Length, dest.Length);
+          int i = offset;
+          for (; i < maxPos; i++)
+          {
+            if (from[i] != dest[i])
+            {
+              break;
+            }
+            if (from[i] == System.IO.Path.DirectorySeparatorChar)
+            {
+              matchPos = i +1;
+            }
+          }
+          if (i == maxPos)
+          {
+            matchPos = maxPos +1;
+          }
+    
+          int popCount = 0;
+          if (matchPos < from.Length)
+          {
+            for (i = matchPos; i < from.Length; i++)
+            {
+              if (from[i] == System.IO.Path.DirectorySeparatorChar)
+              {
+                popCount++;
+              }
+            }
+            popCount++;
+          }
+    
+          List<string> pushDirS = new List<string>();
+          if (matchPos < dest.Length)
+          {
+            for (i = matchPos; i < dest.Length; i++)
+            {
+              if (dest[i] == System.IO.Path.DirectorySeparatorChar)
+              {
+                pushDirS.Add(dest.Substring(matchPos, i - matchPos));
+                matchPos = i +1;
+              }
+            }
+            pushDirS.Add(dest.Substring(matchPos, i - matchPos));
+          }
+    
+          return (popCount, pushDirS.ToArray());
+        }
+    }
+}
+"@;
+     
+
+
 <#
 $Dir1 = "C:\Users"
 $Dir2 = "C:\Users\David\Documents"
@@ -233,6 +298,11 @@ $Dir4 = "C:\Users\David\Documents\Repos\LabelPaq\Pascal\FU_Syst"
 $Dir5 = "C:\Users\David\Documents\Repos\LabelPaq\Pascal\FU_Shift"
 
 $Offset = $Dir1.Length
+$NodeRoute = [CSharpCode.Helper]::GetNodeRoute($Dir3, $Dir4, $Offset)
+$PopCount = $NodeRoute[0]; $PushDirS = $NodeRoute[1]
+$PopCount; $PushDirS
+exit
+
 "-- 1 - 1"
 Find-DirNodeConnection4 -FromPath $Dir1 -ToPath $Dir1 -Offset $Offset
 "-- 2 - 2"
@@ -298,7 +368,9 @@ function Get-DirectoryStats_0
             # $PopCount, $PushDirS = Find-DirNodeConnection -FromPath $DirStats.Name -ToPath $File.DirectoryName
             # $PopCount, $PushDirS = Find-DirNodeConnection2 -FromPath $DirStats.Name -ToPath $File.DirectoryName -Offset $RootDirLen
             # $PopCount, $PushDirS = Find-DirNodeConnection3 -FromPath $DirStats.Name -ToPath $File.DirectoryName -RootDirCount $RootDirCount
-             $PopCount, $PushDirS = Find-DirNodeConnection4 -FromPath $DirStats.Name -ToPath $File.DirectoryName -Offset $RootDirLen
+            # $PopCount, $PushDirS = Find-DirNodeConnection4 -FromPath $DirStats.Name -ToPath $File.DirectoryName -Offset $RootDirLen
+            $NodeRoute = [CSharpCode.Helper]::GetNodeRoute($DirStats.Name, $File.DirectoryName, $RootDirLen)
+            $PopCount = $NodeRoute[0]; $PushDirS = $NodeRoute[1]
 
             for ($i = 0; $i -lt $PopCount; $i++)
             {
