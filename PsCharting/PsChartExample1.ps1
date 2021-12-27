@@ -31,11 +31,11 @@ $ChartArea.AxisX.Interval = 10
 # Create ChartSeries
 $Series1 = New-ChartSeries -SeriesName "Sin"   -Chart $Chart -ChartType FastLine
 $Series2 = New-ChartSeries -SeriesName "| X |" -Chart $Chart -XValues $PointS.X -YValues $PointS.f2
+$Series2.ChartType = [Windows.Forms.DataVisualization.Charting.SeriesChartType]::FastLine
 $Series3 = New-ChartSeries -SeriesName "Sqr"   -Chart $Chart -ChartType Column
 Foreach ($Point in $PointS) 
 {
     [void]$Series1.Points.AddXY($Point.x, $Point.f1) # Explicitly bind each data point to the series
-    $Series2.ChartType = [Windows.Forms.DataVisualization.Charting.SeriesChartType]::FastLine
     # $Series3 ... See alternate DataBindXY() method in next line
 }
 $Series3.Points.DataBindXY($PointS.x, $PointS.f3)
