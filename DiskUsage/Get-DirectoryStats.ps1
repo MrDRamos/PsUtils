@@ -341,7 +341,7 @@ function Get-DirectoryStats_0
     [int]$RootDirLen = $RootDir.FullName.Length +1
     [int]$RootDirCount = $RootDir.FullName.Split([System.IO.Path]::DirectorySeparatorChar).Count
     $BlockSize = 4096
-    # $BlockSize = (Get-Volume -FilePath $RootDir).AllocationUnitSize ##//TODO Takes 40ms. Find faster API
+    ##// $BlockSize = (Get-Volume -FilePath $RootDir).AllocationUnitSize ##//TODO Takes 40ms. Find faster API
     $DirStats = [DirStat]::new($RootDir, $BlockSize)
     $InfoStack = New-Object System.Collections.Stack
 
@@ -356,20 +356,23 @@ function Get-DirectoryStats_0
         [array]$FileS = Get-ChildItem -File -Path $RootDir -Recurse -Force -ErrorAction $ErrorActionPreference    
     }
 
+[int] $DirCount = 0 ##// 
     foreach ($File in $FileS)
     {
         #if ($DirStats.Name -ne $File.Directory.FullName)
         if ($DirStats.Name -ne $File.DirectoryName)
         {
+            $DirCount++ ##// 
             #<#
             ##//TODO: Find-DirNodeConnection() takes 50% of the total process time
-            # $PopCount = 0; $PushDirS = $null
+            # $PopCount = 0; $PushDirS = $null; $InfoStack.Push($DirStats); $Null = $InfoStack.Pop(); if (($DirCount % 4) -eq 0) { Write-Output $DirStats }
             # $PopCount, $PushDirS = Find-DirNodeConnection -FromPath $DirStats.Name -ToPath $File.Directory.FullName
             # $PopCount, $PushDirS = Find-DirNodeConnection -FromPath $DirStats.Name -ToPath $File.DirectoryName
             # $PopCount, $PushDirS = Find-DirNodeConnection2 -FromPath $DirStats.Name -ToPath $File.DirectoryName -Offset $RootDirLen
             # $PopCount, $PushDirS = Find-DirNodeConnection3 -FromPath $DirStats.Name -ToPath $File.DirectoryName -RootDirCount $RootDirCount
             # $PopCount, $PushDirS = Find-DirNodeConnection4 -FromPath $DirStats.Name -ToPath $File.DirectoryName -Offset $RootDirLen
-            $NodeRoute = [CSharpCode.Helper]::GetNodeRoute($DirStats.Name, $File.DirectoryName, $RootDirLen)
+            
+            $NodeRoute = [CSharpCode.Helper]::GetNodeRoute($DirStats.Name, $File.DirectoryName)#, $RootDirLen)
             $PopCount = $NodeRoute[0]; $PushDirS = $NodeRoute[1]
 
             for ($i = 0; $i -lt $PopCount; $i++)
@@ -397,6 +400,7 @@ function Get-DirectoryStats_0
         $DirStats = $ParentStats         
     }
     Write-Output $DirStats
+    Write-Host "DirCount: $DirCount/$($FileS.Count)" -ForegroundColor Yellow ##// 
 }
 
 
@@ -409,7 +413,7 @@ $Path = "$Home\documents\repos\LabelPaq" #\Pascal"
 (Measure-Command {
         $DirStats = Get-DirectoryStats_0 -Path $Path
     }).TotalMilliseconds
-#$DirStats.Count
+$DirStats.Count
 exit
 #>
 
