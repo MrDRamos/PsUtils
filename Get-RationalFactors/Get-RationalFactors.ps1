@@ -11,11 +11,19 @@ The target value to aproxiamate
 The desired precision. Default = 1e-6
 
 .EXAMPLE
+PI to 2 digits
 .\Get-RationalFactors.ps1 -x 3.14 -MaxError 1E-2
 22
 7
 
 .EXAMPLE
+Golden Ratio: 1/2 + sqt(5)/2 to 2 digits
+.\Get-RationalFactors.ps1 -x 1.6180339887 -MaxError 1E-2
+13
+8
+
+.EXAMPLE
+PI to 6 digits
 Get-RationalFactors -x 3.14159265359 -MaxError 1E-6 -Verbose
 ...
 VERBOSE: 3.14159292035398    2.667640e-007
@@ -23,6 +31,7 @@ VERBOSE: 3.14159292035398    2.667640e-007
 113
 
 .EXAMPLE
+Euler's Number: lim(1+1/n)^n to 6 digits
 .\Get-RationalFactors.ps1 -x ([math]::e) -MaxError 1E-6
 2721
 1001
