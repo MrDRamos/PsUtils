@@ -16,21 +16,21 @@ Output a table of daily stats for: New York City
 .\Covid_NYT_Analysis.ps1 -State "New York" -CountieS "New York City" -Passthru
 
 .EXAMPLE
-Output a list of counties in the state of california
-.\Covid_NYT_Analysis.ps1 -State california -ListCounties
+Ineractively select the conties for California from a Pick list
+.\Covid_NYT_Analysis.ps1 -State California
 #>
 [CmdletBinding()]
 param (
 	[Parameter()]
+	#[string] $State = $null,
 	[string] $State = "New York",
 	[Parameter()]
-	[string[]] $CountieS = @("suffolk", "nassau", "New York City"),
+	#[string[]] $CountieS = $null,
+	[string[]] $CountieS = @("suffolk", "nassau", "New York"),
 	[Parameter()]
 	[datetime] $StartDate = 0,
 	[Parameter()]
-	[switch] $Passthru,
-	[Parameter()]
-	[switch] $ListCounties
+	[switch] $Passthru
 )
 
 
@@ -76,21 +76,85 @@ function Get-NYT_CovidGitFile($FileName = "us-counties.csv", $OutFile = "covid_n
 
 <#
 .SYNOPSIS
-Download the latest(todays) covid 19 data from the NYT GIT repo to a csv file.
-Returns the read in csv
+1st Download the latest(todays) covid 19 data from the NYT GIT repo to a csv file.
+2nd Filter out data for one or more states (takes a long time)
+Returns the dataset for the selected states, default is all states (several GB)
+
+.EXAMPLE
+$LongIslandData = Get-NYT_CovidStateData -State "New York"
 #>
-function Get-NYT_CovidData_AllCounties
+function Get-NYT_CovidStateData([string[]] $State = $null)
 {
 	$TodayName = Get-Date -Format "MMMdd"
-	$AllDateFile = "covid__us-counties_$TodayName.csv"
-	if (!(Test-Path $AllDateFile))
+	$TodaysFilename = "covid__us-counties_$TodayName.csv"
+	if (!(Test-Path $TodaysFilename))
 	{
 		Write-Host "Downloading $TodayName Covid-19 Data From NYT - https://github.com/nytimes/covid-19-data" -ForegroundColor Yellow
-		Get-NYT_CovidGitFile -OutFile $AllDateFile
+		Get-NYT_CovidGitFile -OutFile $TodaysFilename
 	}
-	Write-Host "Parsing $TodayName Covid-19 Data From $AllDateFile ..." -ForegroundColor Yellow
-	$AllCounties = Import-Csv -Path $AllDateFile
-	return $AllCounties
+	$StateNames = $State -join "','"
+	Write-Host "Extracting '$StateNames' Covid-19 Data From $TodaysFilename ..." -ForegroundColor Yellow
+	if ($State)
+	{
+		$NytStateData = Import-Csv -Path $TodaysFilename | Where-Object { $State -contains $_.State }
+	}
+	else 
+	{
+		$NytStateData = Import-Csv -Path $TodaysFilename
+	}
+	
+	return $NytStateData
+}
+
+
+function Expand-NYT_CovidStateData($NytStateData, $CountyInfoS)
+{
+	$AllFips = $CountyInfoS.Fips
+	$CountyInfo = $null
+	$LastFips = $null
+	[int]$LastCases = 0
+	[int]$LastDeaths = 0
+	foreach ($Daily in $NytStateData) 
+	{
+		if (!$Daily.Fips -and $Daily.County -eq "New York City") # Fix NYT nonstandard naming convention
+		{
+			$Daily.County = "New York"
+			$Daily.Fips = "36061"
+		}
+		if ($AllFips -contains $Daily.Fips)
+		{
+			if ($LastFips -eq $Daily.Fips)
+			{
+				$DailyCases = $Daily.Cases - $LastCases
+				$DailyDeaths = $Daily.Deaths - $LastDeaths
+
+				$DeltaValueS = [ordered] @{
+					CasesPct       = $Daily.Cases / $CountyInfo.Population
+					DeathsPct      = $Daily.Deaths / $CountyInfo.Population
+					DailyCases     = $DailyCases
+					DailyDeaths    = $DailyDeaths
+					DailyCasesPct  = $DailyCases / $CountyInfo.Population
+					DailyDeathsPct = $DailyDeaths / $CountyInfo.Population
+				}
+			}
+			else 
+			{
+				$LastFips = $Daily.Fips
+				$CountyInfo = $CountyInfoS | Where-Object { $_.Fips -eq $LastFips }
+				$DeltaValueS = [ordered] @{
+					CasesPct       = 0
+					DeathsPct      = 0
+					DailyCases     = 0
+					DailyDeaths    = 0
+					DailyCasesPct  = 0
+					DailyDeathsPct = 0
+				}
+			}
+			$Daily | Add-Member -NotePropertyMembers $DeltaValueS
+			$LastCases = $Daily.Cases
+			$LastDeaths = $Daily.Deaths
+		}
+	}
 }
 
 
@@ -98,101 +162,151 @@ function Get-NYT_CovidData_AllCounties
 .SYNOPSIS
 1st Download the latest(todays) covid 19 data from the NYT GIT repo to a csv file.
 2nd Filter out data for a state (takes a long time)
-3rd Save the extracted state data to a csv file so that its quickly retrieved on the next call
-Returns the state dataset
-
-.EXAMPLE
-$LongIslandData = Get-NYT_CovidData -State "New York"
+3rd Expand the raw NTY data with: a) daily values and b) % of population values
+4th Save the extracted state data to a csv file so that its quickly retrieved on the next call
+5th Filter the returned data for the StartDate and counties names specified in CountyInfoS
+Returns a daily time-series for each wanted county in a hashtable by county name
 #>
-function Get-NYT_CovidStateData([string] $State, [datetime] $StartDate = $null)
+function Select-CovidDataByCounty([array] $CountyInfoS, [datetime] $StartDate = $null)
 {
 	$TodayName = Get-Date -Format "MMMdd"
-	$StateName = $State.Replace(" ","")
-	$StateFile = ".\covid_$($StateName)_$($TodayName).csv"
-	$StateData = $null
 
-	if (Test-Path $StateFile)
+	$NeededStateS = $CountyInfoS.State | Sort-Object -Unique
+
+	#region Generate expanded NYT datasets
+	$MissingStateS = @()
+	foreach ($State in $NeededStateS) 
 	{
-		$StateData = Import-Csv -Path $StateFile
-	}
-	elseif ($State)
-	{
-		$AllData = Get-NYT_CovidData_AllCounties
-		Write-Host "Analyzing $State Covid-19 Data From NYT($TodayName) ..." -ForegroundColor Yellow
-		$StateData = Select-DataByRegion -Data $AllData -State $State #-CountieS $CountieS
-		$StateData = $StateData | Sort-Object "County", "Date"
-		$AddDelta = $true
-		if ($AddDelta)
+		$StateName = $State.Replace(" ", "")
+		$StateFile = ".\covid_$($StateName)_$($TodayName).csv"
+		if (!(Test-Path $StateFile))
 		{
-			$LastFips = $null
-			[int]$LastCases = 0
-			[int]$LastDeaths = 0
-			foreach ($Daily in $StateData) 
+			$MissingStateS += $State;
+		}
+	}
+	if ($MissingStateS)
+	{
+		$NytStateData = Get-NYT_CovidStateData -State $MissingStateS
+		if ($NytStateData)
+		{
+			$NytByStateS = @{}
+			$MissingStateS | ForEach-Object { $NytByStateS.Add($_, [System.Collections.ArrayList]::new()) }
+			foreach ($Item in $NytStateData)
 			{
-				if ($LastFips -eq $Daily.Fips)
+				if ($MissingStateS -contains $Item.State)
 				{
-					$DeltaValueS = [ordered] @{
-						dCases  = $Daily.Cases - $LastCases
-						dDeaths = $Daily.Deaths - $LastDeaths			
-					}
+					[void]$NytByStateS[$Item.State].Add($Item)
 				}
-				else 
-				{
-					$DeltaValueS = [ordered] @{
-						dCases  = 0
-						dDeaths = 0
-					}
-					$LastFips = $Daily.Fips
-				}
-				$Daily | Add-Member -NotePropertyMembers $DeltaValueS
-				$LastCases = $Daily.Cases
-				$LastDeaths = $Daily.Deaths
+			}
+
+			$AllCountyInfoS = Get-UsCensus_ByCounty #-Force
+			foreach ($State in $MissingStateS)
+			{
+				Write-Host "Preserving '$State' Covid-19 Data From NYT($TodayName) ..." -ForegroundColor Yellow
+				$StateName = $State.Replace(" ", "")
+				$StateFile = ".\covid_$($StateName)_$($TodayName).csv"
+
+				$StateCountyInfo = $AllCountyInfoS | Where-Object { $_.State -eq $State }
+				$StateData = $NytByStateS[$State] | Sort-Object -Property County, Date
+				Expand-NYT_CovidStateData -NytStateData $StateData -CountyInfoS $StateCountyInfo
+				$StateData | Export-Csv -Path $StateFile -NoTypeInformation	
 			}
 		}
-		$StateData | Export-Csv -Path $StateFile 
 	}
+	#endregion Generate expanded NYT dataset
 
+
+	$StartDateStr = $null
 	if ($StartDate -gt (Get-Date "2020-01-1"))
 	{
-		$DateStr = $StartDate.Date.ToString("yyyy-MM-dd")
-		$StateData = $StateData | Where-Object { $_.Date -ge $DateStr }
+		$StartDateStr = $StartDate.Date.ToString("yyyy-MM-dd")
 	}
-	return $StateData
+
+	$DataByCounty = @{}
+	foreach ($State in $NeededStateS) 
+	{
+		$StateName = $State.Replace(" ", "")
+		$StateFile = ".\covid_$($StateName)_$($TodayName).csv"
+		$StateData = Import-Csv -Path $StateFile
+		$CountyS = $CountyInfoS | Where-Object { $_.State -eq $State }
+		foreach ($CountyInfo in $CountyS) 
+		{
+			$CountyData = $StateData | Where-Object { $_.Fips -eq $CountyInfo.Fips -and $_.Date -ge $StartDateStr }
+			$DataByCounty[$CountyInfo.County] = $CountyData | Sort-Object -Property Date
+		}
+	}
+	return $DataByCounty
 }
 
 
-function Get-NYT_CountyNames([string] $State = $null)
+function Get-UsCensus_ByCounty([switch] $Force)
 {
-	if ($State)
+	$CenPop2020File = ".\CenPop2020_ByCounty.csv"
+	if ($Force -or !(Test-Path $CenPop2020File))
 	{
-		$AllCounties = Get-NYT_CovidStateData -State $State
-		$UniqueCounties = $AllCounties | Sort-Object county -Unique
+		$PopByCountyUri = "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO.txt"
+		$PopByCountyRaw = (Invoke-RestMethod -Method Get -Uri $PopByCountyUri).Remove(0, 3) # Remove the first 2 BOM chars
+		$PopByCounty = foreach ($Item in ($PopByCountyRaw | ConvertFrom-Csv))
+		{
+			[PSCustomObject]@{
+				State = $Item.STNAME
+				County = $Item.COUNAME
+				Fips   = $Item.STATEFP + $Item.COUNTYFP
+				Population = $Item.POPULATION
+				Latitude = $Item.LATITUDE
+				Longitude = $Item.LONGITUDE
+			} 
+		}
+		$PopByCounty | Export-Csv -Path $CenPop2020File -Force -NoTypeInformation
 	}
 	else 
 	{
-		$AllCounties = Get-NYT_CovidData_AllCounties
-		$UniqueCounties = $AllCounties | Sort-Object state, county -Unique
+		$PopByCounty = Import-Csv -Path $CenPop2020File -Encoding utf8	
 	}
-	return $UniqueCounties | Select-Object State, County, Fips
+	return $PopByCounty
 }
+
+
 
 #EndRegion Retrieve Data
 
 
 ######## Main ########
-if ($ListCounties)
+$PopByCounty = Get-UsCensus_ByCounty #-Force
+if (!$State)
 {
-	Get-NYT_CountyNames -State $State
+	$State = $PopByCounty | Select-Object State -Unique | Out-GridView -OutputMode Single -Title "Select a State"
+}
+if (!$State)
+{
 	return
 }
 
+if ($CountieS)
+{
+	$CountyInfoS = $PopByCounty | Where-Object { $_.State -eq $State -and $CountieS -contains $_.County }
+}
+else
+{
+	$CountyInfoS = $PopByCounty | Where-Object { $_.State -eq $State} | Out-GridView -OutputMode Multiple -Title "Select one or more Counties"
+}
+if (!$CountyInfoS)
+{
+	return
+}
+
+
 #Region Report Results
-$StateData = Get-NYT_CovidStateData -State $State -StartDate $StartDate
+$DataByCounty = Select-CovidDataByCounty -CountyInfoS $CountyInfoS -StartDate $StartDate
+if (!$DataByCounty)
+{
+	return
+}
 
 if ($Passthru)
 {
-	$Dataset = Select-DataByRegion -Data $StateData -CountieS $CountieS
-	return $Dataset | Sort-Object "County", "Date" | Format-Table -Property date, county, cases, deaths
+	$DataByCounty.Values | Format-Table
+	return
 }
 
 $ReportGraph = $true
@@ -219,11 +333,10 @@ if ($ReportGraph)
 	$ChartArea.AxisX.Interval = 10
 
 	# Create ChartSeries
-	foreach ($County in $CountieS)
+	foreach ($Kvp in $DataByCounty.GetEnumerator())
 	{
-		$Data = Select-DataByRegion -Data $StateData -CountieS $County
-		$Series = New-ChartSeries -SeriesName $County -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.Cases
-		$Series | Write-Debug
+		$Data = $Kvp.Value
+		$Series = New-ChartSeries -SeriesName $Kvp.Key -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.CasesPct
 	}
 
 	# Show the chart in a modal window 
@@ -242,11 +355,10 @@ if ($ReportGraph)
 	$ChartArea.AxisX.Interval = 10
 
 	# Create ChartSeries
-	foreach ($County in $CountieS)
+	foreach ($Kvp in $DataByCounty.GetEnumerator())
 	{
-		$Data = Select-DataByRegion -Data $StateData -CountieS $County
-		$Series = New-ChartSeries -SeriesName $County -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.dCases
-		$Series | Write-Debug
+		$Data = $Kvp.Value
+		$Series = New-ChartSeries -SeriesName $Kvp.Key -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.DailyCasesPct
 	}
 
 	# Show the chart in a modal window 
@@ -264,12 +376,10 @@ if ($ReportGraph)
 	$ChartArea.AxisX.Interval = 7
 
 	# Create ChartSeries
-	# Create ChartSeries
-	foreach ($County in $CountieS)
+	foreach ($Kvp in $DataByCounty.GetEnumerator())
 	{
-		$Data = Select-DataByRegion -Data $StateData -CountieS $County
-		$Series = New-ChartSeries -SeriesName $County -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.deaths
-		$Series | Write-Debug
+		$Data = $Kvp.Value
+		$Series = New-ChartSeries -SeriesName $Kvp.Key -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.Deaths
 	}
 
 	# Show the chart in a modal window 
@@ -287,12 +397,10 @@ if ($ReportGraph)
 	$ChartArea.AxisX.Interval = 7
 
 	# Create ChartSeries
-	# Create ChartSeries
-	foreach ($County in $CountieS)
+	foreach ($Kvp in $DataByCounty.GetEnumerator())
 	{
-		$Data = Select-DataByRegion -Data $StateData -CountieS $County
-		$Series = New-ChartSeries -SeriesName $County -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.dDeaths
-		$Series | Write-Debug
+		$Data = $Kvp.Value
+		$Series = New-ChartSeries -SeriesName $Kvp.Key -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.DailyDeaths
 	}
 
 	# Show the chart in a modal window 
