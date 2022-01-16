@@ -26,6 +26,8 @@ param (
 	[Parameter()]
 	[string[]] $CountieS = @("suffolk", "nassau", "New York City"),
 	[Parameter()]
+	[datetime] $StartDate = 0,
+	[Parameter()]
 	[switch] $Passthru,
 	[Parameter()]
 	[switch] $ListCounties
@@ -102,7 +104,7 @@ Returns the state dataset
 .EXAMPLE
 $LongIslandData = Get-NYT_CovidData -State "New York"
 #>
-function Get-NYT_CovidStateData([string] $State)
+function Get-NYT_CovidStateData([string] $State, [datetime] $StartDate = $null)
 {
 	$TodayName = Get-Date -Format "MMMdd"
 	$StateName = $State.Replace(" ","")
@@ -118,7 +120,42 @@ function Get-NYT_CovidStateData([string] $State)
 		$AllData = Get-NYT_CovidData_AllCounties
 		Write-Host "Analyzing $State Covid-19 Data From NYT($TodayName) ..." -ForegroundColor Yellow
 		$StateData = Select-DataByRegion -Data $AllData -State $State #-CountieS $CountieS
-		$StateData | Sort-Object "County", "Date" | Export-Csv -Path $StateFile 
+		$StateData = $StateData | Sort-Object "County", "Date"
+		$AddDelta = $true
+		if ($AddDelta)
+		{
+			$LastFips = $null
+			[int]$LastCases = 0
+			[int]$LastDeaths = 0
+			foreach ($Daily in $StateData) 
+			{
+				if ($LastFips -eq $Daily.Fips)
+				{
+					$DeltaValueS = [ordered] @{
+						dCases  = $Daily.Cases - $LastCases
+						dDeaths = $Daily.Deaths - $LastDeaths			
+					}
+				}
+				else 
+				{
+					$DeltaValueS = [ordered] @{
+						dCases  = 0
+						dDeaths = 0
+					}
+					$LastFips = $Daily.Fips
+				}
+				$Daily | Add-Member -NotePropertyMembers $DeltaValueS
+				$LastCases = $Daily.Cases
+				$LastDeaths = $Daily.Deaths
+			}
+		}
+		$StateData | Export-Csv -Path $StateFile 
+	}
+
+	if ($StartDate -gt (Get-Date "2020-01-1"))
+	{
+		$DateStr = $StartDate.Date.ToString("yyyy-MM-dd")
+		$StateData = $StateData | Where-Object { $_.Date -ge $DateStr }
 	}
 	return $StateData
 }
@@ -150,7 +187,7 @@ if ($ListCounties)
 }
 
 #Region Report Results
-$StateData = Get-NYT_CovidStateData -State $State
+$StateData = Get-NYT_CovidStateData -State $State -StartDate $StartDate
 
 if ($Passthru)
 {
@@ -168,15 +205,16 @@ if ($ReportGraph)
 	}
 
 	. $PsChartingFile
+	$ChartS = @()
 
 	######## Cases #########
 	########################
 	# Create the main [Forms.DataVisualization.Charting.Chart] object
-	$Chart = New-Chart -Title "Covid-19 Cases" -LegendDocking Bottom #-Width 1024 -Height 800
+	$Chart = New-Chart -Title "Covid-19 Total Cases" -LegendDocking Bottom #-Width 1024 -Height 800
 
 	# Modify some default ChartArea properties:
 	$ChartArea = $Chart.ChartAreas[0]
-	$ChartArea.AxisY.Title = "Cases"
+	$ChartArea.AxisY.Title = "Total Cases"
 	$ChartArea.AxisX.Title = "Date"
 	$ChartArea.AxisX.Interval = 10
 
@@ -189,16 +227,39 @@ if ($ReportGraph)
 	}
 
 	# Show the chart in a modal window 
-	Show-Chart -Chart $Chart -WindowTitle "Covid-19 Cases"
+	$ChartS += Show-Chart -Chart $Chart -WindowTitle "NYT Covid-19 Cases" -Passthru
+
+
+	######## dCases #########
+	########################
+	# Create the main [Forms.DataVisualization.Charting.Chart] object
+	$Chart = New-Chart -Title "Covid-19 Daily Cases" -LegendDocking Bottom #-Width 1024 -Height 800
+
+	# Modify some default ChartArea properties:
+	$ChartArea = $Chart.ChartAreas[0]
+	$ChartArea.AxisY.Title = "Daily Cases"
+	$ChartArea.AxisX.Title = "Date"
+	$ChartArea.AxisX.Interval = 10
+
+	# Create ChartSeries
+	foreach ($County in $CountieS)
+	{
+		$Data = Select-DataByRegion -Data $StateData -CountieS $County
+		$Series = New-ChartSeries -SeriesName $County -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.dCases
+		$Series | Write-Debug
+	}
+
+	# Show the chart in a modal window 
+	$ChartS += Show-Chart -Chart $Chart -WindowTitle "NYT Covid-19 Cases" -Passthru
 
 
 	######## Deaths ########
 	########################
-	$Chart = New-Chart -Title "Covid-19 Deaths" -LegendDocking Bottom #-Width 1024 -Height 800
+	$Chart = New-Chart -Title "Covid-19 Total Deaths" -LegendDocking Bottom #-Width 1024 -Height 800
 
 	# Modify some default ChartArea properties:
 	$ChartArea = $Chart.ChartAreas[0]
-	$ChartArea.AxisY.Title = "Deaths"
+	$ChartArea.AxisY.Title = "Total Deaths"
 	$ChartArea.AxisX.Title = "Date"
 	$ChartArea.AxisX.Interval = 7
 
@@ -212,7 +273,36 @@ if ($ReportGraph)
 	}
 
 	# Show the chart in a modal window 
-	Show-Chart -Chart $Chart -WindowTitle "Covid-19 Deaths"
+	$ChartS += Show-Chart -Chart $Chart -WindowTitle "NYT Covid-19 Deaths" -Passthru
+
+
+	######## dDeaths ########
+	########################
+	$Chart = New-Chart -Title "Covid-19 Daily Deaths" -LegendDocking Bottom #-Width 1024 -Height 800
+
+	# Modify some default ChartArea properties:
+	$ChartArea = $Chart.ChartAreas[0]
+	$ChartArea.AxisY.Title = "Daily Deaths"
+	$ChartArea.AxisX.Title = "Date"
+	$ChartArea.AxisX.Interval = 7
+
+	# Create ChartSeries
+	# Create ChartSeries
+	foreach ($County in $CountieS)
+	{
+		$Data = Select-DataByRegion -Data $StateData -CountieS $County
+		$Series = New-ChartSeries -SeriesName $County -Chart $Chart -ChartType FastLine -XValues $Data.Date -YValues $Data.dDeaths
+		$Series | Write-Debug
+	}
+
+	# Show the chart in a modal window 
+	$ChartS += Show-Chart -Chart $Chart -WindowTitle "NYT Covid-19 Deaths" -Passthru
+
+	# Show all the charts, Closing the first 1 closes all the others
+	$ParentChart = $ChartS[0]
+	$ChildChartS = $ChartS[1..($ChartS.Count - 1)]
+	$ParentChart.Add_Shown({ $ChildChartS | ForEach-Object { $_.Owner = $ParentChart; $_.Show() } })
+	$ParentChart.ShowDialog()
 }
 
 #EndRegion Report Results

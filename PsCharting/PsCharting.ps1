@@ -285,7 +285,10 @@ function Show-Chart()
         [int]$Height,
 
         [parameter()]
-        [string]$IconFile = $null
+        [string]$IconFile = $null,
+
+        [parameter()]
+        [switch]$Passthru
     )
        
     # Display the chart on a form     
@@ -319,8 +322,15 @@ function Show-Chart()
     }
 
     $NewWinForm.Controls.Add($Chart)
-    $NewWinForm.Add_Shown({$NewWinForm.Activate()})
-    $null = $NewWinForm.ShowDialog()
+    if ($Passthru)
+    {
+        return $NewWinForm
+    }
+    else 
+    {
+        $NewWinForm.Add_Shown({ $NewWinForm.Activate() })
+        $null = $NewWinForm.ShowDialog()   
+    }
 }
 
 
