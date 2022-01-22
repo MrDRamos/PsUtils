@@ -1,27 +1,35 @@
 
 <#
 .SYNOPSIS
-Starts a list of physical machines by using Wake On LAN.
- 
-.DESCRIPTION
-sends a Wake On LAN magic packet to a given machine's MAC address.
+Sends a Wake On LAN magic packet to a given machine's MAC address.
+MacAddress's are harder to remember than ComputerName's. The script will alternatively accept
+a ComputerName, but only if the associated MacAddress can be found in a lookup-file.
+The lookup-file contains CSV formatted entries, and is automatically seeded with new MacAddress's.
+Mote: You must manually edit the lookup-file to supply the associated ComputerName.
  
 .PARAMETER MacAddress
-MacAddress of of one or more target machines to wake.
-User is prompted to append new MAC values not found in the lookup file.
-Manually edit the csv lookup file to associate a computer name with the new MacAddress entry.
+The network adapter MacAddress of one or more target computers to wake.
+PowerShell command the retrieve the MacAddress: Get-NetAdapter
+The lookup-file is parsed for a matching MacAddress entry. If no match is found then the user 
+is prompted to append new MacAddress to the lookup-file. 
+Mote: You must manually edit the lookup-file to supply the associated ComputerName.
 
-.PARAMETER Computer
-One or more computer names to wake up. The csv lookup file must exist, and it must have been 
-manually edited to associate computer names with MacAddress entries.
+.PARAMETER ComputerName
+The name of one or more computers to wake up. 
+The ComputerName specified is used to find an associated MacAddress entry in the lookup-file. 
+The script will abort if the lookup-file does not exist or the ComputerName was not found.
+Mote: You must manually edit the lookup-file to supply the associated ComputerName.
+
+.PARAMETER ShowMac
+Retrieves a list of all the network adapter MacAddress's on this computer
 
 .EXAMPLE
-Interactively select one or more computers from the cached values in the lookup file
+Interactively select one or more computers from the cached values in the lookup-file
 Send-WakeupOnLanPacket
 
 .EXAMPLE
 Specify computer names instead of MAC address's
-Send-WakeupOnLanPacket -Computer <Name>,<2nd-Name>
+Send-WakeupOnLanPacket -ComputerName <Name1>,<Name2>
 
 .EXAMPLE
 Send-WakeupOnLanPacket 11:22:33:44:55:66
@@ -30,14 +38,22 @@ Send-WakeupOnLanPacket 11:22:33:44:55:66
 Send-WakeupOnLanPacket "00-15-5D-D7-21-1B"
 #>
  
-[CmdletBinding(DefaultParameterSetName = "ByMac")]
+[CmdletBinding(DefaultParameterSetName = "ByName")]
 param( 
-    [Parameter(Position = 1, ParameterSetName = "ByMac", HelpMessage = "MAC address of 1 or more target machine to wake up")]
+    [Parameter(ParameterSetName = "ByMac",
+               HelpMessage = "MAC address of one or more target computers to wake up.")]
+    [Alias("MAC")]
     [string[]] $MacAddress,
     
-    [Parameter(ParameterSetName = "ByName")]
-    [Alias("Host")]
-    [string[]] $Computer 
+    [Parameter(ParameterSetName = "ByName", Position = 1)]
+    [Alias("Host", "MachineName")]
+    [string[]] $ComputerName,
+
+    [Parameter()]
+    [string] $LookupFile = "$PSScriptRoot\Send-WolComputers.csv",
+
+    [Parameter(ParameterSetName = "ShowMac")]
+    [switch] $ShowMac
 )
  
 
@@ -101,8 +117,13 @@ $ErrorActionPreference = "Stop"
 #Region Init HostInfoS
 [array] $AllHostInfoS = $null
 
-# Try to find HostInfoS in lookup file
-$LookupFile = "Send-WolComputers.csv"
+if ($ShowMac)
+{
+    Get-NetAdapter | Format-Table MacAddress, Status, Name, InterfaceDescription
+    return
+}
+
+# Try to find HostInfoS in lookup-file
 if (Test-Path $LookupFile)
 {
     $AllHostInfoS = Import-Csv -Path $LookupFile -ErrorAction Stop
@@ -110,56 +131,61 @@ if (Test-Path $LookupFile)
     {
         if ($MacAddress)
         {
-            $HostInfoS += $AllHostInfoS | Where-Object { $MacAddress -Contains $_.Mac }
+            $HostInfoS += $AllHostInfoS | Where-Object { $MacAddress -Contains $_.MacAddress }
         }
-        elseif ($Computer)
+        elseif ($ComputerName)
         {
-            $HostInfoS += $AllHostInfoS | Where-Object { $Computer -Contains $_.Computer }
+            $HostInfoS += $AllHostInfoS | Where-Object { $ComputerName -Contains $_.ComputerName }
         }        
     }
 }
 
-# Add new MacAddress to lookup file
+# Add new MacAddress to lookup-file
 if ($MacAddress)
 {
     [array]$NewMacS = $MacAddress
     if ($HostInfoS)
     {
-        [array]$NewMacS = $MacAddress | Where-Object { $HostInfoS.Mac -NotContains $_ }    
+        [array]$NewMacS = $MacAddress | Where-Object { $HostInfoS.MacAddress -NotContains $_ }    
     }
     if ($NewMacS)
     {
-        $NewHostS = $NewMacS | ForEach-Object { [pscustomobject]@{ Mac = $_; Computer = ""; IPv4 ="" } }
+        Write-Host "MacAddress(s) not found lookup-file: '$LookupFile'" -ForegroundColor Red
+        $NewHostS = $NewMacS | ForEach-Object { [pscustomobject]@{ MacAddress = $_; ComputerName = ""; IPv4 = "" } }
         $HostInfoS += $NewHostS
-        ($NewHostS | Format-Table | Out-String).TrimEnd() | Write-Host -ForegroundColor Yellow
-        $Inp = Read-Host -Prompt "Append new values to lookup file: $LookupFile (Y)es / (N)o"
+        ($NewHostS | Format-Table | Out-String).Trim() | Write-Host
+        $Inp = Read-Host -Prompt "Append new MacAddress(s) to lookup-file - Enter (Y)es (N)o (C)ancel"
         if ($Inp -match "Y")
         {
             $AllHostInfoS += $NewHostS
             $AllHostInfoS | Export-Csv -Path $LookupFile -Force                
         }
+        elseif ($Inp -match "C")
+        {
+            return
+        }
     }
 }
 
-# Abort if an unknown(Not in lookup file) computer was specified
-if ($Computer)
+# Abort if an unknown(Not in lookup-file) computer was specified
+if ($ComputerName)
 {
-    [array]$NewComputerS = $Computer
+    [array]$NewComputerS = $ComputerName
     if ($HostInfoS)
     {
-        [array]$NewComputerS = $Computer | Where-Object { $HostInfoS.Computer -NotContains $_ }
+        [array]$NewComputerS = $ComputerName | Where-Object { $HostInfoS.ComputerName -NotContains $_ }
     }
     if ($NewComputerS)
     {
-        Write-Host "Error: No lookup file:$LookupFile entries found for the following computers:" -ForegroundColor Red
-        $NewHostS = $NewComputerS | ForEach-Object { [pscustomobject]@{ Mac = "???"; Computer = "$_"; IPv4 ="" } }
+        Write-Host "Error: ComputerName(s) not found in lookup-file: '$LookupFile'" -ForegroundColor Red
+        $NewHostS = $NewComputerS | ForEach-Object { [pscustomobject]@{ MacAddress = "--:--:--:--:--:--"; ComputerName = "$_"; IPv4 = "" } }
         $NewHostS | ConvertTo-Csv | Write-Host -ForegroundColor Yellow
         return
     }
 }
 
 
-# Let user interactivly select entries from the lookup file
+# Let user interactivly select entries from the lookup-file
 if (!$HostInfoS)
 {
     if ($AllHostInfoS)
@@ -172,6 +198,6 @@ if (!$HostInfoS)
 
 foreach ($HostInfo in $HostInfoS)
 {
-    Write-Host ("Waking: {0,-12} Mac: {1}   IPv4: {2}" -f $HostInfo.Computer, $HostInfo.Mac, $HostInfo.IPv4)
-    Send-WakeupOnLanPacket -MacAddress $HostInfo.Mac
+    Write-Host ("Waking: {0,-12} Mac: {1}   IPv4: {2}" -f $HostInfo.ComputerName, $HostInfo.MacAddress, $HostInfo.IPv4)
+    Send-WakeupOnLanPacket -MacAddress $HostInfo.MacAddress
 }
