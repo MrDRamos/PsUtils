@@ -408,6 +408,7 @@ $Path = "$Home\documents\repos\LabelPaq" #\Pascal"
 #$Path = "$Home\documents\repos" #\PsUtils"
 #$Path = "C:\Install"
 #$Path = "$Home\documents\repos\LabelPaq\Pascal"
+$Path = "C:\Windows\WinSxS" # 33K dirs , 70K files
 
 #<#
 (Measure-Command {
