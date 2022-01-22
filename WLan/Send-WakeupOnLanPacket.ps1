@@ -32,7 +32,7 @@ Send-WakeupOnLanPacket "00-15-5D-D7-21-1B"
  
 [CmdletBinding(DefaultParameterSetName = "ByMac")]
 param( 
-    [Parameter(ParameterSetName = "ByMac", HelpMessage = "MAC address of 1 or more target machine to wake up")]
+    [Parameter(Position = 1, ParameterSetName = "ByMac", HelpMessage = "MAC address of 1 or more target machine to wake up")]
     [string[]] $MacAddress,
     
     [Parameter(ParameterSetName = "ByName")]
@@ -172,6 +172,6 @@ if (!$HostInfoS)
 
 foreach ($HostInfo in $HostInfoS)
 {
-    Write-Host ("Waking: {0,-12} Mac:{1}   IPv4:{2}" -f $HostInfo.Computer, $HostInfo.Mac, $HostInfo.IPv4)
+    Write-Host ("Waking: {0,-12} Mac: {1}   IPv4: {2}" -f $HostInfo.Computer, $HostInfo.Mac, $HostInfo.IPv4)
     Send-WakeupOnLanPacket -MacAddress $HostInfo.Mac
 }
