@@ -26,6 +26,9 @@ Retrieves a list of all the network adapter MacAddress's on this computer
 .PARAMETER ShowLookupTable
 Retrieves a list of all the network adapter MacAddress's on this computer
 
+.PARAMETER ShowWakeDevice
+List devices that are currently configured to wake the system from any sleep state
+
 .EXAMPLE
 Interactively select one or more computers from the cached values in the lookup-file
 Send-WakeupOnLanPacket
@@ -52,14 +55,19 @@ param(
     [Alias("Host", "MachineName")]
     [string[]] $ComputerName,
 
-    [Parameter()]
+    [Parameter(ParameterSetName = "ShowLookup")]
+    [switch] $ShowLookup,
+
+    [Parameter(ParameterSetName = "ByMac")]
+    [Parameter(ParameterSetName = "ByName")]
+    [Parameter(ParameterSetName = "ShowLookup")]
     [string] $LookupFile = "$PSScriptRoot\Send-WolComputers.csv",
 
     [Parameter(ParameterSetName = "ShowMac")]
     [switch] $ShowMac,
 
-    [Parameter(ParameterSetName = "ShowLookup")]
-    [switch] $ShowLookup
+    [Parameter(ParameterSetName = "ShowWakeDevice")]
+    [switch] $ShowWakeDevice
 )
  
 
@@ -130,6 +138,14 @@ if ($ShowLookup)
     $LookupTable | Format-Table
     return
 }
+
+if ($ShowWakeDevice)
+{
+    "Devices that are currently configured to wake the system from any sleep state."
+    & powercfg.exe -devicequery wake_armed
+    return
+}
+
 
 #Region Init HostInfoS
 [array] $HostInfoS = $null
