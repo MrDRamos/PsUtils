@@ -23,6 +23,9 @@ Mote: You must manually edit the lookup-file to supply the associated ComputerNa
 .PARAMETER ShowMac
 Retrieves a list of all the network adapter MacAddress's on this computer
 
+.PARAMETER ShowLookupTable
+Retrieves a list of all the network adapter MacAddress's on this computer
+
 .EXAMPLE
 Interactively select one or more computers from the cached values in the lookup-file
 Send-WakeupOnLanPacket
@@ -32,10 +35,10 @@ Specify computer names instead of MAC address's
 Send-WakeupOnLanPacket -ComputerName <Name1>,<Name2>
 
 .EXAMPLE
-Send-WakeupOnLanPacket 11:22:33:44:55:66
+Send-WakeupOnLanPacket -MacAddress "00-15-5D-D7-21-1B"
 
 .EXAMPLE
-Send-WakeupOnLanPacket "00-15-5D-D7-21-1B"
+Send-WakeupOnLanPacket -MAC 11:22:33:44:55:66
 #>
  
 [CmdletBinding(DefaultParameterSetName = "ByName")]
@@ -53,7 +56,10 @@ param(
     [string] $LookupFile = "$PSScriptRoot\Send-WolComputers.csv",
 
     [Parameter(ParameterSetName = "ShowMac")]
-    [switch] $ShowMac
+    [switch] $ShowMac,
+
+    [Parameter(ParameterSetName = "ShowLookup")]
+    [switch] $ShowLookup
 )
  
 
@@ -112,30 +118,36 @@ function Send-WakeupOnLanPacket([string]$MacAddress)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-[array] $HostInfoS = $null
-
-#Region Init HostInfoS
-[array] $AllHostInfoS = $null
-
 if ($ShowMac)
 {
     Get-NetAdapter | Format-Table MacAddress, Status, Name, InterfaceDescription
     return
 }
 
+if ($ShowLookup)
+{
+    $LookupTable = Import-Csv -Path $LookupFile -ErrorAction Stop
+    $LookupTable | Format-Table
+    return
+}
+
+#Region Init HostInfoS
+[array] $HostInfoS = $null
+[array] $LookupTable = $null
+
 # Try to find HostInfoS in lookup-file
 if (Test-Path $LookupFile)
 {
-    $AllHostInfoS = Import-Csv -Path $LookupFile -ErrorAction Stop
-    if ($AllHostInfoS)
+    $LookupTable = Import-Csv -Path $LookupFile -ErrorAction Stop
+    if ($LookupTable)
     {
         if ($MacAddress)
         {
-            $HostInfoS += $AllHostInfoS | Where-Object { $MacAddress -Contains $_.MacAddress }
+            $HostInfoS += $LookupTable | Where-Object { $MacAddress -Contains $_.MacAddress }
         }
         elseif ($ComputerName)
         {
-            $HostInfoS += $AllHostInfoS | Where-Object { $ComputerName -Contains $_.ComputerName }
+            $HostInfoS += $LookupTable | Where-Object { $ComputerName -Contains $_.ComputerName }
         }        
     }
 }
@@ -157,8 +169,8 @@ if ($MacAddress)
         $Inp = Read-Host -Prompt "Append new MacAddress(s) to lookup-file - Enter (Y)es (N)o (C)ancel"
         if ($Inp -match "Y")
         {
-            $AllHostInfoS += $NewHostS
-            $AllHostInfoS | Export-Csv -Path $LookupFile -Force                
+            $LookupTable += $NewHostS
+            $LookupTable | Export-Csv -Path $LookupFile -Force                
         }
         elseif ($Inp -match "C")
         {
@@ -188,9 +200,9 @@ if ($ComputerName)
 # Let user interactivly select entries from the lookup-file
 if (!$HostInfoS)
 {
-    if ($AllHostInfoS)
+    if ($LookupTable)
     {
-        $HostInfoS = $AllHostInfoS | Out-GridView -OutputMode Multiple
+        $HostInfoS = $LookupTable | Out-GridView -OutputMode Multiple
     }
 }
 #EndRegion Init HostInfoS
