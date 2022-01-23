@@ -71,9 +71,7 @@ param(
 )
  
 
-function Send-WakeupOnLanPacket([string]$MacAddress, [int] $Port = 9)
-{
-    <#
+<#
     .SYNOPSIS
     Send-Packet sends a specified number of magic packets to a MAC address in order to wake up the machine.  
  
@@ -90,35 +88,56 @@ function Send-WakeupOnLanPacket([string]$MacAddress, [int] $Port = 9)
     Wiki - Wake-on-LAN
     https://en.wikipedia.org/wiki/Wake-on-LAN
     #>
- 
+function Send-WakeupOnLanPacket
+{
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string]$MacAddress, 
+
+        [Parameter()]
+        $BroadcastIP = [System.Net.IPAddress]::Broadcast, 
+
+        [Parameter()]
+        [int[]] $Port = @(0, 7, 9, 40000)
+    )
+
+    $Success = $false
+    $UdpClient = $null
     try
     {
-        ## Construct .Net address object for the MAC address
+        # Convert the MAC string to a .Net object representing the MAC address
         $MacAddress = $MacAddress.Replace(":", "-")
         $MacAddress = $MacAddress.Replace(".", "-")
         $MAC = [Net.NetworkInformation.PhysicalAddress]::Parse($MacAddress.ToUpper())
  
         ## Construct the Magic Packet frame, 17 * 6 = 102 Bytes
-        $Packet = [Byte[]](, 0xFF * 6) + ($MAC.GetAddressBytes() * 16)
+        $MagicPacket = [Byte[]](, 0xFF * 6) + ($MAC.GetAddressBytes() * 16)
  
-        ## Create IP endpoints for each port
-        $Broadcast = ([System.Net.IPAddress]::Broadcast)
-        $IPEndPoint = New-Object Net.IPEndPoint $Broadcast, $Port
- 
-        ## Broadcast UDP packets to the IP endpoint of the machine
-        $UdpClient = New-Object Net.Sockets.UdpClient
-        $SentLength = $UdpClient.Send($Packet, $Packet.Length, $IPEndPoint)
-        $UdpClient.Close()
-        if ($SentLength -ne $Packet.Length)
+        foreach ($PortI in $Port)
         {
-            Throw "Failed to broadcast the WOL packet"
+            $UdpClient = New-Object Net.Sockets.UdpClient
+            $UdpClient.Connect($BroadcastIP, $PortI)
+            $SentLength = $UdpClient.Send($MagicPacket, $MagicPacket.Length)
+            $UdpClient.Dispose()
+            $UdpClient = $null
+            if ($SentLength -ne $MagicPacket.Length)
+            {
+                Throw "Send bytes: $SentLength / $($MagicPacket.Length)"
+            }
         }
+        $Success = $true   
     }
     catch
     {
-        $UdpClient.Dispose()
-        $Error | Write-Error;
+        $ErrMsg = "Failed to send MagicPacket to MAC: $MacAddress on port: $PortI. Error: $($_.Exception.Message)"
+        Write-Host $ErrMsg -ForegroundColor Red
+        if ($UdpClient)
+        {
+            $UdpClient.Dispose()
+        }
     }
+    return $Success
 }
 
 
@@ -225,8 +244,13 @@ if (!$HostInfoS)
 #EndRegion Init HostInfoS
 
 
-foreach ($HostInfo in $HostInfoS)
+$Retval = foreach ($HostInfo in $HostInfoS)
 {
-    Write-Host ("Waking: {0,-12} Mac: {1}   IPv4: {2}" -f $HostInfo.ComputerName, $HostInfo.MacAddress, $HostInfo.IPv4)
-    Send-WakeupOnLanPacket -MacAddress $HostInfo.MacAddress
-}
+    $Success = Send-WakeupOnLanPacket -MacAddress $HostInfo.MacAddress #-BroadcastIP $HostInfo.IPv4
+    [PSCustomObject]@{
+        Sent         = $Success
+        MacAddress   = $HostInfo.MacAddress
+        ComputerName = $HostInfo.ComputerName
+    }
+} 
+return $Retval
