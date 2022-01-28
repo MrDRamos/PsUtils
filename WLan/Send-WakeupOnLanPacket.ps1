@@ -21,7 +21,8 @@ The script will abort if the lookup-file does not exist or the ComputerName was 
 Mote: You must manually edit the lookup-file to supply the associated ComputerName.
 
 .PARAMETER ShowMac
-Retrieves a list of all the network adapter MacAddress's on this computer
+Returns a list of physical network adapters & their MacAddress's on this computer.
+These physical network adapters can be configured to respond to Wake On LAN magic packets.
 
 .PARAMETER ShowLookupTable
 Retrieves a list of all the network adapter MacAddress's on this computer
@@ -146,12 +147,6 @@ function Send-WakeupOnLanPacket
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if ($ShowMac)
-{
-    Get-NetAdapter | Format-Table MacAddress, Status, Name, InterfaceDescription
-    return
-}
-
 if ($ShowLookup)
 {
     $LookupTable = Import-Csv -Path $LookupFile -ErrorAction Stop
@@ -159,9 +154,16 @@ if ($ShowLookup)
     return
 }
 
+if ($ShowMac)
+{
+    Write-Host "Physical network adapters can be configured to respond to Wake On LAN magic packets:"
+    Get-NetAdapter -Physical | Format-Table MacAddress, Name, Status, LinkSpeed, InterfaceDescription
+    return
+}
+
 if ($ShowWakeDevice)
 {
-    "Devices that are currently configured to wake the system from any sleep state."
+    Write-Host "Devices that are currently configured to wake the system from any sleep state:"
     & powercfg.exe -devicequery wake_armed
     return
 }
