@@ -125,6 +125,7 @@ function Send-WakeupOnLanPacket
             {
                 Throw "Send bytes: $SentLength / $($MagicPacket.Length)"
             }
+            [System.Threading.Thread]::Sleep(2)
         }
         $Success = $true   
     }
