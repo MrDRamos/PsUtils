@@ -2,7 +2,7 @@
 param
 (
     [Parameter()]
-    [int] $Range = 50,
+    [int] $Range = 255,
 
     [Parameter()]
     [string] $Lan24Ip = "192.168.1"
