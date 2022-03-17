@@ -1,3 +1,8 @@
+[CmdletBinding()]
+param (
+    [Parameter()]
+    $Outfile = ".\vc_redist2015-2022_x64.exe"
+)
 
 <#
 API's to manage Visual Studio C++ runtimes installed on a computer
@@ -259,4 +264,4 @@ function Show-VcRuntimeUninstall($VerRegex = $null)
 
 
 #### main ####
-Get-VcRuntime | Sort-Object
+Get-Vc2015_2022Runtime -Outfile $Outfile
