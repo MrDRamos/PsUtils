@@ -1,8 +1,3 @@
-[CmdletBinding()]
-param (
-    [Parameter()]
-    $FilePath = ".\vc_redist2015-2022_x64.exe"
-)
 
 <#
 API's to manage Visual Studio C++ runtimes installed on a computer
@@ -42,10 +37,10 @@ function Get-Vc2015_2022Runtime
         [switch] $Passthru
     )
 
-    Write-Host "Downloading common VC redistributable: $Outfile"
     $Uri = "https://download.visualstudio.microsoft.com/download/pr/89a3b9df-4a09-492e-8474-8f92c115c51d/B1A32C71A6B7D5978904FB223763263EA5A7EB23B2C44A0D60E90D234AD99178/VC_redist.x64.exe" # Sep 25 2020
     $Uri = "https://aka.ms/vs/17/release/vc_redist.x64.exe"                                                                                                                                  # Jan  5 2022
     $Uri = "https://download.visualstudio.microsoft.com/download/pr/d22ecb93-6eab-4ce1-89f3-97a816c55f04/37ED59A66699C0E5A7EBEEF7352D7C1C2ED5EDE7212950A1B0A8EE289AF4A95B/VC_redist.x64.exe" # Jan  5 2022
+    Write-Host "Downloading common VC 2015-2022 runtime from Jan/5/2022 to:`n$Outfile"
     Invoke-RestMethod -Method Get -Uri $Uri -OutFile $Outfile
 
     if ($Passthru)
@@ -81,8 +76,9 @@ function Get-Vc2015Runtime
         [switch] $Passthru
     )
 
-    $Uri = "https://download.microsoft.com/download/9/3/F/93FCF1E7-E6A4-478B-96E7-D4B285925B00/vc_redist.x64.exe" # Original Redistributable  7/10/2015
-    $Uri = "https://download.microsoft.com/download/6/A/A/6AA4EDFF-645B-48C5-81CC-ED5963AEAD48/vc_redist.x64.exe" # Redistributable Update-3  9/15/2016
+    $Uri = "https://download.microsoft.com/download/9/3/F/93FCF1E7-E6A4-478B-96E7-D4B285925B00/vc_redist.x64.exe" # Original Redistributable  Jul/10/2015
+    $Uri = "https://download.microsoft.com/download/6/A/A/6AA4EDFF-645B-48C5-81CC-ED5963AEAD48/vc_redist.x64.exe" # Redistributable Update-3  Sep/15/2016
+    Write-Host "Downloading VC 2015 runtime from Sep/15/2016 to:`n$Outfile"    
     Invoke-RestMethod -Method Get -Uri $Uri -OutFile $Outfile
 
     if ($Passthru)
@@ -118,7 +114,8 @@ function Get-Vc2010Runtime
     )
 
     $Uri = "https://download.microsoft.com/download/3/2/2/3224B87F-CFA0-4E70-BDA3-3DE650EFEBA5/vcredist_x64.exe"
-    $Uri = "https://download.microsoft.com/download/A/8/0/A80747C3-41BD-45DF-B505-E9710D2744E0/vcredist_x64.exe"  #SP1 5/12/2021
+    $Uri = "https://download.microsoft.com/download/A/8/0/A80747C3-41BD-45DF-B505-E9710D2744E0/vcredist_x64.exe"  #SP1 May/12/2021
+    Write-Host "Downloading VC 2010 runtime SP1 from May/12/2021 to:`n$Outfile"    
     Invoke-RestMethod -Method Get -Uri $Uri -OutFile $Outfile
 
     if ($Passthru)
@@ -264,4 +261,5 @@ function Show-VcRuntimeUninstall($VerRegex = $null)
 
 
 #### main ####
-Install-Vc2015_2022Runtime -FilePath $FilePath
+Install-Vc2015_2022Runtime ".\vc_redist2015-2022_x64.exe"
+#Install-Vc2010Runtime ".\vc_redist2010Sp1_x64.exe"
