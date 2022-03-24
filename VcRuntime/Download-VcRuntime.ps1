@@ -261,4 +261,5 @@ function Show-VcRuntimeUninstall($VerRegex = $null)
 
 
 #### main ####
-Get-VcRuntime | Sort-Object
+Get-Vc2015_2022Runtime ".\vc_redist2015-2022_x64.exe"
+#Get-Vc2010Runtime ".\vc_redist2010Sp1_x64.exe"
