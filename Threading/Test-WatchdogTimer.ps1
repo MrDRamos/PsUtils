@@ -27,12 +27,16 @@ Function Remove-AppResources
     param ()
 
     Write-Verbose "`nReleasing Script Resources"
+   if ($Global:G_Hash)
+   {
+        Remove-Variable -Name G_Hash -Scope Global
+   }
 
     if ($WatchDogDoneSignal)
     {
         Write-Verbose "Removing Done-AutoResetEvent"
         $WatchDogDoneSignal.Dispose()
-        Remove-Variable -Name WatchDogDoneSignal -Scope Global
+        Remove-Variable -Name WatchDogDoneSignal -ErrorAction Ignore
     }
 
     if ($WatchDogTimerEventId)
@@ -43,7 +47,7 @@ Function Remove-AppResources
             Write-Verbose "UnRegistering Event Subscribers"
             ($OldSubscription | Format-List | Out-String).Trim() | Write-Verbose
             Unregister-Event -SourceIdentifier $WatchDogTimerEventId
-            Remove-Variable -Name WatchDogTimerEventId -Scope Global
+            Remove-Variable -Name WatchDogTimerEventId -ErrorAction Ignore
         }    
     }
 
@@ -68,16 +72,27 @@ Remove-AppResources # Just in case last test failed before final cleanup
 
 
 
-#Global scope is required to make variables visible in event handler
-$Global:EventCount = 0
-$Global:WatchDogTimerEventId = 'WatchDogTimer.Elapsed'
-
 # This demo has several mechanisms for the WatchDog event handler to signal back to the main loop when its done
-$Global:WatchDogDoneEventId = $Global:WatchDogDoneSignal = $Global:WatchDogDoneFlag = 0
+$WatchDogDoneEventId = $WatchDogDoneSignal = $WatchDogDoneFlag = 0
 # Uncomment one of the variable initializes below to activate that mechanism:
-#$Global:WatchDogDoneEventId = "Custom.Done-Event"
-#$Global:WatchDogDoneSignal  = New-Object System.Threading.AutoResetEvent -ArgumentList $false
-$Global:WatchDogDoneFlag    = 1
+#$WatchDogDoneEventId = "Custom.Done-Event"
+#$WatchDogDoneSignal  = New-Object System.Threading.AutoResetEvent -ArgumentList $false
+$WatchDogDoneFlag    = 1
+
+$WatchDogTimerEventId = "WatchDogTimer.Elapsed"
+
+#Global scope is required to make variables visible in event handler
+$Global:G_Hash = @{
+    # These variables are modified the Event handler
+    EventCount           = 0  
+    WatchDogDoneFlag     = [ref]$WatchDogDoneFlag
+
+    # Constant variable copies:
+    WatchDogTimerEventId = $WatchDogTimerEventId 
+    WatchDogDoneEventId  = $WatchDogDoneEventId
+    WatchDogDoneSignal   = $WatchDogDoneSignal
+}
+
 
 
 $WatchDogTimer = New-Object System.Timers.Timer -Property @{
@@ -108,8 +123,9 @@ $WatchDogTimer = New-Object System.Timers.Timer -Property @{
     {
     # No thread-save locking is needed to modify $EventCount, since the timer events run on the main thread
     # But we need to access the variables of the main script block using the Global scope
-    $Global:EventCount++
-    Write-Host "`nAction handler received event: $Global:EventCount - $Global:WatchDogTimerEventId" -ForegroundColor Green
+    $L_Hash = $Global:G_Hash # $L_Hash is now alias for $Global:G_Hash
+    $L_Hash.EventCount++
+    Write-Host "`nAction handler received event: $($L_Hash.EventCount) - $($L_Hash.WatchDogTimerEventId)" -ForegroundColor Green
 
     $Verbose = $false
     #$Verbose = $True
@@ -135,18 +151,18 @@ $WatchDogTimer = New-Object System.Timers.Timer -Property @{
 
     #Region Notify Main loop
     # Notify Main loop that the Event handler is done using one of the mechenisms below:
-    $DoneMsg = "Action handler exiting event: $Global:EventCount"
-    if ($Global:WatchDogDoneSignal)
+    $DoneMsg = "Action handler exiting event: $($L_Hash.EventCount)"
+    if ($L_Hash.WatchDogDoneSignal)
     {
         Write-Host "$DoneMsg -> Setting Done-AutoResetEvent" -ForegroundColor Green
-        $Global:WatchDogDoneSignal.Set()
+        $L_Hash.WatchDogDoneSignal.Set()
     }
-    elseif ($Global:WatchDogDoneEventId)
+    elseif ($L_Hash.WatchDogDoneEventId)
     {
-        if ($Host.Name -eq "ConsoleHost")
+        if ($Host.Name -eq "_ConsoleHost")
         {
             <#
-                Exuction after calling New-Event() depends on the Powershell Hosting envirornmant:
+                Execution after calling New-Event() depends on the Powershell Hosting envirornmant:
                 When running from a Powershell Console, execution of commands stop, after New-Event(),
                 But NOT when running within Vs-Code.
             #>
@@ -155,14 +171,14 @@ $WatchDogTimer = New-Object System.Timers.Timer -Property @{
         else 
         {
             Write-Host "$DoneMsg -> Posting Custom-Done-Event" -ForegroundColor Green
-            $MsgData = @{EventCount = $Global:EventCount; TimeGenerated = $Event.TimeGenerated }
-            New-Event -SourceIdentifier $Global:WatchDogDoneEventId -Sender "WatchdogTimer.EventHandler" -MessageData $MsgData #-EventArguments
+            $MsgData = @{EventCount = $L_Hash.EventCount; TimeGenerated = $Event.TimeGenerated }
+                New-Event -SourceIdentifier $L_Hash.WatchDogDoneEventId -Sender "WatchdogTimer.EventHandler" -MessageData $MsgData #-EventArguments
         }
     }
-    elseif ($Global:WatchDogDoneFlag)
+    elseif ($L_Hash.WatchDogDoneFlag)
     {
         Write-Host "$DoneMsg -> Setting Done-Flag" -ForegroundColor Green
-        $null = [Threading.Interlocked]::CompareExchange([ref]$Global:WatchDogDoneFlag, 2, 1)
+        $null = [Threading.Interlocked]::CompareExchange($L_Hash.WatchDogDoneFlag, 2, 1)
     }
     else 
     {
@@ -171,7 +187,7 @@ $WatchDogTimer = New-Object System.Timers.Timer -Property @{
     #EndRegion Notify Main loop
 
     #Region Kill the application
-    if ($Global:EventCount -ge 3)
+    if ($L_Hash.EventCount -ge 3)
     {
         <#
             # Terminate powershell Session
@@ -271,7 +287,7 @@ catch
 }
 
 $WatchDogTimer.Enabled = $false
-Write-Host "`nMain loop completed. Total Watch-Dog events: $EventCount"
+Write-Host "`nMain loop completed. Total Watch-Dog events: $($G_Hash.EventCount)"
 #EndRegion Main
 
 # Free Event Resources
