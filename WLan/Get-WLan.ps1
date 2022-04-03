@@ -1,10 +1,15 @@
 <#
 .SYNOPSIS
-Shows a list of wireless networks detected by the PC's Wifi adapter.
+Retuns a list of wireless networks detected by the PC's WiFi adapter.
 The list is sorted by channel and signal strength.
+
 .DESCRIPTION
 The list is obtained by parsing the output of the following command:
 netsh wlan show networks mode=Bssid
+
+.EXAMPLE
+Show table of detected WiFi networks
+Get-WLan | Format-Table
 #>
 param()
 
@@ -13,7 +18,8 @@ function Get-WLan
 {
     [int]$HidenCount = 0
     [int]$LineNo = 0
-    $WlanS = @()
+    #$WlanS = @()
+    $WlanS = [System.Collections.ArrayList]::new()
 
     [string[]]$outLineS = & netsh.exe wlan show networks mode=Bssid
     while ($LineNo -lt $outLineS.Count)
@@ -66,7 +72,8 @@ function Get-WLan
                     "BasicRates(Mbps)" = $BasicRates
                     "OtherRates(Mbps)" = $OtherRates
                 }
-                $WlanS += $Wlan    
+                #$WlanS += $Wlan
+                [void]$WlanS.add($Wlan)
             }
         }
     }
@@ -74,5 +81,5 @@ function Get-WLan
     return $WlanS | Sort-Object -Property Channel, @{Expression = "Signal"; Descending = $True}
 }
 
-
-Get-WLan | Format-Table
+$Retval = Get-WLan
+return $Retval
