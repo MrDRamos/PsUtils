@@ -16,6 +16,8 @@ param (
 Powershell Event Registration
 https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/register-objectevent?view=powershell-7.2
 
+PowerShell Event Examples:
+https://learn-powershell.net/2013/02/08/powershell-and-events-object-events/
 
 # System.Timers.Timer Class: 
 https://docs.microsoft.com/en-us/dotnet/api/system.timers.timer?view=net-6.0
