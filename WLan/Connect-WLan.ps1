@@ -85,6 +85,7 @@ function Add-WlanProfile
     }
 
     # Create the WiFi profile, set the profile to auto connect
+    # See examples in: C:\ProgramData\Microsoft\Wlansvc\Profiles\Interfaces
     $WirelessProfile = @'
     <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
         <name>{5}</name>
