@@ -29,39 +29,70 @@ NOTE:
 The windows FileSystem utility: fsutil.exe can be used to manage hard linked files:
 https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-hardlink
 
+
+
 .EXAMPLE
-Copy-FilesAsHardlinks -SourceDir "$ENV:LOCALAPPDATA\Microsoft\Media Player" -DestinationDir "$ENV:TMP\HardLink_Test\Media Player" -Recurse
+Make hard linked copies of all the files in C:\tmp into the new folder C:\tmp_test
+Copy-FilesAsHardlinks -SourceDir 'C:\tmp'   -DestinationDir 'C:\tmp_test'
+Copy-FilesAsHardlinks -SourceDir 'C:\tmp\*' -DestinationDir 'C:\tmp_test'
+
+.EXAMPLE
+Copy the subdirectory structure from C:\tmp to C:\tmp_test and recursively make 
+hard link copies of the source files into the respective destination directories.
+Copy-FilesAsHardlinks -SourceDir 'C:\tmp' -DestinationDir 'C:\tmp_test' -Recurse
+
+.EXAMPLE
+Copy the subdirectory structure from C:\tmp to C:\tmp_test and recursively make 
+hard link copies of the '*.txt' source files into the respective destination directories.
+Copy-FilesAsHardlinks -SourceDir 'C:\tmp' -Include '*.txt' -DestinationDir 'C:\tmp_test' -Recurse
+
+.EXAMPLE
+Test what what hard links would be created with -Whatif
+Copy-FilesAsHardlinks -SourceDir 'C:\tmp\*.txt' -DestinationDir 'C:\tmp_test' -Whatif
+
+.EXAMPLE
+Make hard linked copies of the *.txt files in C:\tmp to the new folder C:\tmp_test
+Copy-FilesAsHardlinks -SourceDir 'C:\tmp\*.txt'            -DestinationDir 'C:\tmp_test'
+Copy-FilesAsHardlinks -SourceDir 'C:\tmp' -Include '*.txt' -DestinationDir 'C:\tmp_test'
+
+
 
 .PARAMETER SourceDir
-Path to the directory containing the orignal files which are the target of the new hard link.
+A directory path to the folder containing the orignal files which are the target of the new hard link.
+Or a file path with a wildcard pattern specifying one or more source files to link, e.g. C:\tmp\*.txt
 
 .PARAMETER DestinationDir
 The directory in which the new hard link file entries will be made. 
 The destination directory is created if it does not exist, (like Copy-Item)
 
 .PARAMETER Include
-An optional file filter to use (like Copy-Item) example: @('*.dll' , '*.exe'), 
+An optional file filter to use (like Copy-Item) example: @('*.dll' , '*.exe')
+This parameter is ignored if the SourceDir specifies one or more files e.g. C:\tmp\*.txt
 
 .PARAMETER Exclude
 An optional file exlusion filter to use (like Copy-Item) example: example: @('*.config' , '*.ini')
 
 .PARAMETER Recurse
 Recursively hard link all the files in subfolders
+This parameter is ignored if the SourceDir specifies one or more files e.g. C:\tmp\*.txt
 
 .PARAMETER Force
 Overwrite any pre-existing files in the destination directory with the new hard link.
+
+.PARAMETER Force
+Returns the created destiation files. By default, this cmdlet doesn't generate any output
 #>
 function Copy-FilesAsHardlinks
 {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
-        [Parameter(Mandatory)]
-        [ValidateNotNull()]
-        [Object] $SourceDir,
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [ValidateNotNullOrEmpty()]
+        [string] $SourceDir,
 
         [Parameter(Mandatory)]
-        [ValidateNotNull()]
-        [Object] $DestinationDir,
+        [ValidateNotNullOrEmpty()]
+        [string] $DestinationDir,
 
         [Parameter()]
         [string[]] $Include = $null,
@@ -73,10 +104,37 @@ function Copy-FilesAsHardlinks
         [switch] $Recurse,
 
         [Parameter()]
-        [switch] $Force
-    )
+        [switch] $Force,
 
-    $SourceDir = (Resolve-Path -Path $SourceDir).Path.TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+        [Parameter()]
+        [switch] $PassThru
+    )   
+
+    # Validate input params
+    if ((Split-Path -Path $SourceDir -Leaf) -eq '*')
+    {
+        $SourceDir = Split-Path -Path $SourceDir -Parent
+    }
+    if (Test-Path -Path $SourceDir -PathType Container)
+    {
+        $SourceDir = (Resolve-Path -Path $SourceDir).Path.TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+    }
+    else 
+    {       
+        $Recurse = $false # Only copy the selected file(s) in the root folder
+        $SrcPath = Resolve-Path -Path $SourceDir | Where-Object { Test-Path -Path $_ -PathType Leaf }
+        if (!$SrcPath)
+        {
+            if ($ErrorActionPreference -notin @("Ignore", "SilentlyContinue"))
+            {
+                throw [System.ArgumentException]"Cannot find path $SourceDir because it does not exist"
+            }
+            return
+        }
+        $Include = $SrcPath | Split-Path -Leaf
+        $SourceDir = Split-Path -Path $SourceDir -Parent            
+    }
+
     $SourceDirLen = $SourceDir.Length
     [array]$SrcDirS = Get-Item -Path $SourceDir
     if ($Recurse)
@@ -86,48 +144,89 @@ function Copy-FilesAsHardlinks
 
     foreach ($SrcDir in $SrcDirS.FullName)
     {
-        $RelPath = $SrcDir.Substring($SourceDirLen)
-        $DstDir = $DestinationDir + $RelPath
-        if (!(Test-Path -Path $DstDir))
-        {
-            $null = New-Item -Path $DstDir -ItemType Directory
-        }
-
+        $DstDir = $DestinationDir + $SrcDir.Substring($SourceDirLen)
         $SrcPath = $SrcDir + [System.IO.Path]::DirectorySeparatorChar + '*'
         $SrcFileS = Get-ChildItem -Path $SrcPath -Include $Include -Exclude $Exclude -File -Force #include hidden files
-        foreach ($SrcFile in $SrcFileS) 
+        if ($SrcFileS)
         {
-            $null = New-Item -ItemType HardLink -Path $DstDir -Name $SrcFile.Name -Target $SrcFile.FullName -Force:$Force
-        }    
+            if (!(Test-Path -Path $DstDir))
+            {
+                $null = New-Item -ItemType Directory -Path $DstDir
+            }
+            foreach ($SrcFile in $SrcFileS) 
+            {
+                $NewLink = New-Item -ItemType HardLink -Path $DstDir -Name $SrcFile.Name -Target $SrcFile.FullName -Force:$Force
+                if ($PassThru)
+                {
+                    Write-Output $NewLink # Send it out the pipeline
+                }
+            }
+        }
+        elseif ($Recurse) 
+        {
+            if (!(Test-Path -Path $DstDir))
+            {
+                $null = New-Item -ItemType Directory -Path $DstDir
+            }
+        }
     }
 }
 
 
+
+
 <####  Unit test ####
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$Exclude = $Include = $null
+$TestOutDir = "$ENV:TMP\HardLink_Test"
 $TestBigDir = $false
 #$TestBigDir = $true
 if ($TestBigDir)
 {
     $SrcDir = "$ENV:USERPROFILE\.vscode"   # Has 10K+ files in 2K+ SubDirectories
-    $DstDir = "$ENV:TMP\HardLink_Test\.vscode"
+    $DstDir = "$TestOutDir\.vscode"
     $Exclude = @('*.dll', '*.exe', '*.pdb')  # Exclude files loaded by vscode runtime so that we can remove the hardlinks when running this test from within VsCode
 }
 else 
 {
     $SrcDir = "$ENV:LOCALAPPDATA\Microsoft\Media Player"    # Has only a few files folders
-    $DstDir = "$ENV:TMP\HardLink_Test\Media Player"
+    $DstDir = "$TestOutDir\Media Player"
 }
 
 
-# Exclude DLL's 
-Copy-FilesAsHardlinks -SourceDir $SrcDir -DestinationDir $DstDir -Exclude $Exclude -Recurse -Force -ErrorAction 'Stop' #'SilentlyContinue'
-Wait-Debugger  ##DD un-comment to debug
-& tree $DstDir
-[array]$TestFile = Get-ChildItem -Path $DstDir -File
-if ($TestFile)
+# Test bad file-path with SilentlyContinue
+Copy-FilesAsHardlinks -SourceDir 'C:\tmp\*.FooBar' -DestinationDir $TestOutDir -ErrorAction SilentlyContinue
+
+
+[array]$DstFileS = Copy-FilesAsHardlinks -PassThru -SourceDir $SrcDir -DestinationDir $DstDir `
+                                         -Exclude $Exclude -Recurse -Force -ErrorAction 'Stop' #| Tee-Object -FilePath "$TestOutDir\test.log"
+# Validate the files
+[array]$SrcFileS = Get-ChildItem -Path "$SrcDir\*" -Include $Include -Exclude $Exclude -File -Recurse -Force
+if ($DstFileS.Count -ne $SrcFileS.Count)
 {
-    'Sample file links:'
-    & fsutil.exe hardlink list $TestFile[0].FullName
+    "Error: Files in SourceDir=$($SrcFileS.Count) DestinationDir=$($DstFileS.Count)" | Write-Host -ForegroundColor Red
 }
-Write-Host "Remove-Item -Path '$DstDir' -Recurse -Force" -ForegroundColor Cyan
+else 
+{
+    "Success: Copied $($DstFileS.Count) files" | Write-Host -ForegroundColor Green
+}
+
+# Validate the dirs
+[array]$SrcDirS = Get-ChildItem -Path $SrcDir -Directory -Recurse -Force
+[array]$DstDirS = Get-ChildItem -Path $DstDir -Directory -Recurse -Force
+if ($DstDirS.Count -ne $SrcDirS.Count)
+{
+    "Error: Subdirectories in SourceDir=$($SrcDirS.Count) DestinationDir=$($DstDirS.Count)" | Write-Host -ForegroundColor Red
+}
+else 
+{
+    "Success: Copied $($DstDirS.Count) Subdirectories" | Write-Host -ForegroundColor Green
+}
+
+# Cleanup
+Write-Host "Remove-Item -Force -Recurse -Path '$TestOutDir'" -ForegroundColor Cyan
+
 #>
