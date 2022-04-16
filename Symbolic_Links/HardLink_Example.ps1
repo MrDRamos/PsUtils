@@ -18,6 +18,8 @@ linked references. That means if you change the permissions/owner/attributes on 
 immediately see the changes on all the other hard links.
 
 .NOTES
+Thw native windows command line tool to create symbolic links is mklink, e.g. as Administrator run:
+& $ENV:ComSpec /C mklink /H <Path> <Target>
 The windows FileSystem utility: fsutil.exe can be used to manage hard linked files:
 https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-hardlink
 #>
@@ -47,7 +49,9 @@ Move-Item -Path ".\test.hardcopy2.txt" -Destination ".\test.hardmove.txt" -Verbo
 Compare-Object -ReferenceObject (Get-Content ".\test.txt") -DifferenceObject (Get-Content ".\test.hardmove.txt") | Write-Host -ForegroundColor Red
 
 # Deleting the original file does not delete the hardlinks
-Remove-Item -Path ".\test.txt" -Verbose
+# Remove-Item -Path ".\test.txt" -Verbose       # Fails if one of the hardlinks has a lock on the file
+# Alternative to Remove-Item: Move the file to one of its shared hardliks, works even if one of the hardlinks has a lock on the file
+Move-Item -Path ".\test.txt" -Destination ".\test.hardcopy.txt"
 (Get-Item test* | Select-Object Name, LinkType, Length, LastWriteTime, Target | Format-Table | Out-String).TrimStart()
 
 

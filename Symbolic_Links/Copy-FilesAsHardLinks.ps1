@@ -33,72 +33,100 @@ https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/
 
 .EXAMPLE
 Make hard linked copies of all the files in C:\tmp into the new folder C:\tmp_test
-Copy-FilesAsHardlinks -SourceDir 'C:\tmp'   -DestinationDir 'C:\tmp_test'
-Copy-FilesAsHardlinks -SourceDir 'C:\tmp\*' -DestinationDir 'C:\tmp_test'
+Copy-FilesAsHardlinks -Path 'C:\tmp'   -Destination 'C:\tmp_test'
+Copy-FilesAsHardlinks -Path 'C:\tmp\*' -Destination 'C:\tmp_test'
 
 .EXAMPLE
-Copy the subdirectory structure from C:\tmp to C:\tmp_test and recursively make 
+Copy the sub directory structure from C:\tmp to C:\tmp_test and recursively make 
 hard link copies of the source files into the respective destination directories.
-Copy-FilesAsHardlinks -SourceDir 'C:\tmp' -DestinationDir 'C:\tmp_test' -Recurse
+Copy-FilesAsHardlinks -Path 'C:\tmp' -Destination 'C:\tmp_test' -Recurse
 
 .EXAMPLE
-Copy the subdirectory structure from C:\tmp to C:\tmp_test and recursively make 
+Copy the sub directory structure from C:\tmp to C:\tmp_test and recursively make 
 hard link copies of the '*.txt' source files into the respective destination directories.
-Copy-FilesAsHardlinks -SourceDir 'C:\tmp' -Include '*.txt' -DestinationDir 'C:\tmp_test' -Recurse
+Copy-FilesAsHardlinks -Path 'C:\tmp' -Include '*.txt' -Destination 'C:\tmp_test' -Recurse
 
 .EXAMPLE
 Test what what hard links would be created with -Whatif
-Copy-FilesAsHardlinks -SourceDir 'C:\tmp\*.txt' -DestinationDir 'C:\tmp_test' -Whatif
+Copy-FilesAsHardlinks -Path 'C:\tmp\*.txt' -Destination 'C:\tmp_test' -Whatif
 
 .EXAMPLE
 Make hard linked copies of the *.txt files in C:\tmp to the new folder C:\tmp_test
-Copy-FilesAsHardlinks -SourceDir 'C:\tmp\*.txt'            -DestinationDir 'C:\tmp_test'
-Copy-FilesAsHardlinks -SourceDir 'C:\tmp' -Include '*.txt' -DestinationDir 'C:\tmp_test'
+Copy-FilesAsHardlinks -Path 'C:\tmp\*.txt'            -Destination 'C:\tmp_test'
+Copy-FilesAsHardlinks -Path 'C:\tmp' -Include '*.txt' -Destination 'C:\tmp_test'
 
 
 
-.PARAMETER SourceDir
-A directory path to the folder containing the orignal files which are the target of the new hard link.
-Or a file path with a wildcard pattern specifying one or more source files to link, e.g. C:\tmp\*.txt
+.PARAMETER Path
+Specifies, as a string array, the path to the source items to copy. Wildcard characters 
+are permitted. The path parameter can specify one or more files or folders or both,
+by using wildcard patterns. The default wildcard Path pattern is '*', whoch selects all 
+files and folders found in the top level folder of the path.
+Note: The Wildcard patterns, Filter, Include & Exclude parameters only apply to the 
+top level folder of the path parameter, and do not apply to files & folders discovered
+while recursing child folders, just like Copy-Intem().
 
-.PARAMETER DestinationDir
-The directory in which the new hard link file entries will be made. 
-The destination directory is created if it does not exist, (like Copy-Item)
+.PARAMETER Destination
+Specifies a path to the folder into which the source files & folders are copied. 
+The default is the current directory. The Destination folder should exist before
+the call, but new recursed sub-directories are automtically created 'normally' if 
+they do not exist, i.e. they are NOT sym-linked to the source folder.
+New files are NOT copied but are hard linked to the source file. That is how this
+function differs from Copy-Item().
 
 .PARAMETER Include
-An optional file filter to use (like Copy-Item) example: @('*.dll' , '*.exe')
-This parameter is ignored if the SourceDir specifies one or more files e.g. C:\tmp\*.txt
+The Include pattern is a secondary filter that is applied to the files & folders that 
+were selected by the wildcard pattern of the Path parameter, note the default wildcard 
+Path pattern is '*'. It only applies to the entries found in the top level folder of 
+Path parameter, i.e. it is not applied to files & folders discovered when recursing
+through child folders.
 
 .PARAMETER Exclude
-An optional file exlusion filter to use (like Copy-Item) example: example: @('*.config' , '*.ini')
+The Exclude pattern is a secondary filter that is applied to the files & folders that 
+were selected by the wildcard pattern of the Path parameter, note the default wildcard 
+Path pattern is '*'. It only applies to the entries found in the top level folder of 
+Path parameter, i.e. it is not applied to files & folders discovered when recursing
+through child folders.
+
+.PARAMETER Filter
+An additional wildcard pattern to qualify the files & folders selected by the first
+wildcard pattern of the Path parameter, note the default wildcard Path pattern is '*'. 
+Note: Using a native file system Filter pattern is more efficient than using Include 
+and Exclude lists.
 
 .PARAMETER Recurse
-Recursively hard link all the files in subfolders
-This parameter is ignored if the SourceDir specifies one or more files e.g. C:\tmp\*.txt
+Switch to recursively re-create the file & folder structure of the source Path.
+New files under the Destination path are hard linked, i.e not copied. But new folders 
+are created normally, i.e. they not sym-linked to the source folder.
+Note: This parameter is ignored if the source Path wildcard pattern only selects 
+files and no directories, e.g. C:\tmp\*.txt
 
 .PARAMETER Force
 Overwrite any pre-existing files in the destination directory with the new hard link.
 
-.PARAMETER Force
+.PARAMETER PassThru
 Returns the created destiation files. By default, this cmdlet doesn't generate any output
 #>
 function Copy-FilesAsHardlinks
 {
     [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([System.IO.FileInfo], [System.IO.DirectoryInfo])]
     param (
         [Parameter(Mandatory, ValueFromPipeline)]
         [ValidateNotNullOrEmpty()]
-        [string] $SourceDir,
+        [string] $Path,
 
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string] $DestinationDir,
+        [Parameter()]
+        [string] $Destination = $null,
 
         [Parameter()]
         [string[]] $Include = $null,
 
         [Parameter()]
         [string[]] $Exclude = $null,
+
+        [Parameter()]
+        [string] $Filter = $null,
 
         [Parameter()]
         [switch] $Recurse,
@@ -110,123 +138,102 @@ function Copy-FilesAsHardlinks
         [switch] $PassThru
     )   
 
-    # Validate input params
-    if ((Split-Path -Path $SourceDir -Leaf) -eq '*')
+    process 
     {
-        $SourceDir = Split-Path -Path $SourceDir -Parent
-    }
-    if (Test-Path -Path $SourceDir -PathType Container)
-    {
-        $SourceDir = (Resolve-Path -Path $SourceDir).Path.TrimEnd([System.IO.Path]::DirectorySeparatorChar)
-    }
-    else 
-    {       
-        $Recurse = $false # Only copy the selected file(s) in the root folder
-        $SrcPath = Resolve-Path -Path $SourceDir | Where-Object { Test-Path -Path $_ -PathType Leaf }
-        if (!$SrcPath)
+        function Copy_DirsLinkFiles([array]$SrcItemS, [int] $RelRelPathLen)
         {
-            if ($ErrorActionPreference -notin @("Ignore", "SilentlyContinue"))
+            if ($SrcItemS)
             {
-                throw [System.ArgumentException]"Cannot find path $SourceDir because it does not exist"
-            }
-            return
-        }
-        $Include = $SrcPath | Split-Path -Leaf
-        $SourceDir = Split-Path -Path $SourceDir -Parent            
-    }
-
-    $SourceDirLen = $SourceDir.Length
-    [array]$SrcDirS = Get-Item -Path $SourceDir
-    if ($Recurse)
-    {
-        $SrcDirS += Get-ChildItem -Recurse -Path $SourceDir -Directory
-    }
-
-    foreach ($SrcDir in $SrcDirS.FullName)
-    {
-        $DstDir = $DestinationDir + $SrcDir.Substring($SourceDirLen)
-        $SrcPath = $SrcDir + [System.IO.Path]::DirectorySeparatorChar + '*'
-        $SrcFileS = Get-ChildItem -Path $SrcPath -Include $Include -Exclude $Exclude -File -Force #include hidden files
-        if ($SrcFileS)
-        {
-            if (!(Test-Path -Path $DstDir))
-            {
-                $null = New-Item -ItemType Directory -Path $DstDir
-            }
-            foreach ($SrcFile in $SrcFileS) 
-            {
-                $NewLink = New-Item -ItemType HardLink -Path $DstDir -Name $SrcFile.Name -Target $SrcFile.FullName -Force:$Force
-                if ($PassThru)
+                # Create new sub-directories
+                [array]$SrcDirS = $SrcItemS | Where-Object { $_.PSIsContainer }
+                foreach ($SrcDir in $SrcDirS)
                 {
-                    Write-Output $NewLink # Send it out the pipeline
+                    $DstPath = $DstFolder + $SrcDir.FullName.Substring($RelPathLen)
+                    if (!(Test-Path -Path $DstPath))
+                    {
+                        $NewDir = New-Item -ItemType Directory -Path $DstPath
+                        if ($PassThru)
+                        {
+                            Write-Output $NewDir # foward to pipeline
+                        }
+                    }
+                }
+            
+                # Create hard linked files
+                [array]$SrcFileS = $SrcItemS | Where-Object { !$_.PSIsContainer }
+                foreach ($SrcFile in $SrcFileS) 
+                {
+                    $DstPath = $DstFolder + $SrcFile.FullName.Substring($RelPathLen)
+                    $NewLink = New-Item -ItemType HardLink -Path $DstPath -Target $SrcFile.FullName -Force:$Force
+                    if ($PassThru)
+                    {
+                        Write-Output $NewLink # foward to pipeline
+                    }
                 }
             }
         }
-        elseif ($Recurse) 
+        
+        $DstFolder = $Destination
+        [array]$BaseDirS = @()
+        $PathHasPattern = Test-Path -Path $Path -PathType Leaf
+        if ($PathHasPattern -or $Filter -or $Include -or $Exclude)
         {
-            if (!(Test-Path -Path $DstDir))
+            $Folder = $Path
+            if ($PathHasPattern)
             {
-                $null = New-Item -ItemType Directory -Path $DstDir
+                $Folder = Split-Path -Path $Path -Parent
+            }
+            $PathFolder = Resolve-Path -Path $Folder
+            $RelPathLen = $PathFolder.Path.Length
+
+            # Processs files in root folder specified by the wildcard pattern
+            $SrcItemS = Get-ChildItem -Path $Path -Include $Include -Exclude $Exclude -Filter $Filter
+            Copy_DirsLinkFiles -SrcItemS $SrcItemS -RelPathLen $RelPathLen
+
+            # Get sub-directories specified by the wildcard pattern
+            if ($Recurse)
+            {
+                $BaseDirS += $SrcItemS | Where-Object { $_.PSIsContainer }
+            }
+        }
+        else 
+        {
+            $PathFolder = Resolve-Path -Path $Path
+            $RelPathLen = $PathFolder.Path.Length
+            [array]$BaseDirS = Get-Item -Path $PathFolder
+            if (Test-Path -Path $DstFolder)
+            {
+                # This logic is for compatibility with Copy-Item()
+                $DstFolder = Join-Path -Path $DstFolder -ChildPath (Split-Path -Path $PathFolder.Path -Leaf)
+            }
+        }
+
+        if ($BaseDirS)
+        {
+            if ($Recurse)
+            {
+                $SubDirS = @()
+                foreach ($SrcDir in $BaseDirS)
+                {
+                    $SubDirS += Get-ChildItem -Recurse -Path $SrcDir.FullName -Directory
+                }
+                $BaseDirS += $SubDirS
+            }
+
+            if (!(Test-Path -Path $DstFolder))
+            {
+                $NewDir = New-Item -ItemType Directory -Path $DstFolder -Force:$Force
+                if ($PassThru)
+                {
+                    Write-Output $NewDir # foward to pipeline
+                }
+            }
+
+            foreach ($SrcDir in $BaseDirS)
+            {
+                [array]$SrcItemS = Get-ChildItem -Path $SrcDir.FullName -Force #include hidden files
+                Copy_DirsLinkFiles -SrcItemS $SrcItemS -RelPathLen $RelPathLen
             }
         }
     }
 }
-
-
-
-
-<####  Unit test ####
-
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
-
-$Exclude = $Include = $null
-$TestOutDir = "$ENV:TMP\HardLink_Test"
-$TestBigDir = $false
-#$TestBigDir = $true
-if ($TestBigDir)
-{
-    $SrcDir = "$ENV:USERPROFILE\.vscode"   # Has 10K+ files in 2K+ SubDirectories
-    $DstDir = "$TestOutDir\.vscode"
-    $Exclude = @('*.dll', '*.exe', '*.pdb')  # Exclude files loaded by vscode runtime so that we can remove the hardlinks when running this test from within VsCode
-}
-else 
-{
-    $SrcDir = "$ENV:LOCALAPPDATA\Microsoft\Media Player"    # Has only a few files folders
-    $DstDir = "$TestOutDir\Media Player"
-}
-
-
-# Test bad file-path with SilentlyContinue
-Copy-FilesAsHardlinks -SourceDir 'C:\tmp\*.FooBar' -DestinationDir $TestOutDir -ErrorAction SilentlyContinue
-
-
-[array]$DstFileS = Copy-FilesAsHardlinks -PassThru -SourceDir $SrcDir -DestinationDir $DstDir `
-                                         -Exclude $Exclude -Recurse -Force -ErrorAction 'Stop' #| Tee-Object -FilePath "$TestOutDir\test.log"
-# Validate the files
-[array]$SrcFileS = Get-ChildItem -Path "$SrcDir\*" -Include $Include -Exclude $Exclude -File -Recurse -Force
-if ($DstFileS.Count -ne $SrcFileS.Count)
-{
-    "Error: Files in SourceDir=$($SrcFileS.Count) DestinationDir=$($DstFileS.Count)" | Write-Host -ForegroundColor Red
-}
-else 
-{
-    "Success: Copied $($DstFileS.Count) files" | Write-Host -ForegroundColor Green
-}
-
-# Validate the dirs
-[array]$SrcDirS = Get-ChildItem -Path $SrcDir -Directory -Recurse -Force
-[array]$DstDirS = Get-ChildItem -Path $DstDir -Directory -Recurse -Force
-if ($DstDirS.Count -ne $SrcDirS.Count)
-{
-    "Error: Subdirectories in SourceDir=$($SrcDirS.Count) DestinationDir=$($DstDirS.Count)" | Write-Host -ForegroundColor Red
-}
-else 
-{
-    "Success: Copied $($DstDirS.Count) Subdirectories" | Write-Host -ForegroundColor Green
-}
-
-# Cleanup
-Write-Host "Remove-Item -Force -Recurse -Path '$TestOutDir'" -ForegroundColor Cyan
-
-#>
