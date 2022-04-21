@@ -6,7 +6,8 @@ $ErrorActionPreference = "Stop"
 . $PSScriptRoot\Copy-FilesAsHardlinks.ps1
 . $PSScriptRoot\Remove-Hardlinks.ps1
 
-$TestDir = "$ENV:TMP\HardLink_Test"
+$TestFolder = "HardLink_Test"
+$TestDir = "$ENV:TMP\$TestFolder"
 $TestSrc = "$TestDir\src"
 
 function New_DirTree($TestDir)
@@ -29,19 +30,25 @@ function New_DirTree($TestDir)
 
 function Compare_CopyVsLink($TstName, $Path, $Filter = $null, [switch]$Recurse, [switch]$DestExists)
 {
+    Write-Host "$TstName, Copy-Item vs HardLink: -Path $Path -Recurse:$Recurse -Filter $Filter"    
+
     # Test recursive removal
-    Remove-Hardlinks -Path "$TestDir\Link" -FindTargetDir -AllFiles -ErrorAction 'Inquire'
+    Remove-Hardlinks -Path "$TestDir\Link" -FindTargetDir -Recurse -ErrorAction 'Inquire'
     [array]$FileS = Get-ChildItem -File -Path "$TestDir\Link" -Recurse
     if ($FileS)
     {
-        "$TstName Error: Failed to remove $($FileS.Count) files:`n$($FileS.FullName -join "`n")" | Write-Host -ForegroundColor Red          
+        "$TstName Error: Failed to remove $($FileS.Count) files:`n$($FileS.FullName -join "`n")" | Write-Host -ForegroundColor Red
+        Remove-Item -Path "$TestDir\Link" -Recurse -Force -ErrorAction Ignore
     }
-    Remove-Item -Path "$TestDir\Link", "$TestDir\Copy" -Recurse -ErrorAction Ignore # Remove remainig direcotories
 
+    # Prep Copy dir:
+    Remove-Item -Path "$TestDir\Copy" -Recurse -Force -ErrorAction Ignore
     if ($DestExists)
     {
         $null = New-Item -ItemType Directory -Path "$TestDir\Copy"
     }
+
+    # Copy links into 'Copy' dir so that returned file names in LnkItemS will match in MissingNameS test bellow
     [array]$LnkItemS = Copy-FilesAsHardlinks -Path $Path -Filter $Filter -Destination "$TestDir\Copy" -Recurse:$Recurse -PassThru -Force
     Move-Item -Path "$TestDir\Copy" -Destination "$TestDir\Link"
 
@@ -53,7 +60,8 @@ function Compare_CopyVsLink($TstName, $Path, $Filter = $null, [switch]$Recurse, 
     {
         $null = New-Item -ItemType Directory -Path "$TestDir\Copy" -Force
     }
-    Write-Host "Copy-Item -Destination <Copy> -Path $Path -Recurse:$Recurse -Filter $Filter"    
+
+    # Workaround Copy-Item bug not accepting -Recurse:$false argument
     if ($Recurse)
     {
         [array]$CpyItemS = Copy-Item -Path $Path -Filter $Filter -Destination "$TestDir\Copy" -PassThru -Force -Recurse:$Recurse
@@ -84,26 +92,24 @@ function Compare_CopyVsLink($TstName, $Path, $Filter = $null, [switch]$Recurse, 
     }
 }
 
-Remove-Item -Path $TestDir\* -Recurse -ErrorAction Ignore
+
+
+if (Test-Path -Path $TestDir)
+{
+    Remove-Item -Path $TestDir\* -Recurse -ErrorAction Stop
+}
 $null = New_DirTree $TestDir
 
-Compare_CopyVsLink -TstName "Recurse"       -Path "$TestSrc\*"  -Recurse
-Compare_CopyVsLink -TstName "Filter= *.txt" -Path "$TestSrc\*"  -Filter "*.txt" 
-Compare_CopyVsLink -TstName "Filter"        -Path "$TestSrc\*"
-Compare_CopyVsLink -TstName "No* "          -Path "$TestSrc"    -Recurse
-Compare_CopyVsLink -TstName "No* Exists"    -Path "$TestSrc"    -Recurse    -DestExists
-Compare_CopyVsLink -TstName "DestExists *"  -Path "$TestSrc\*"              -DestExists
-# Stupid Copy-Item edge cases that fail because Path has no pattern and no -Recurse => They want to just copy an empty folder
-Compare_CopyVsLink -TstName "DestExists"    -Path "$TestSrc"                -DestExists 
-Compare_CopyVsLink -TstName "No* Filter"    -Path "$TestSrc"    -Filter "*"
+# Primary use case:
+Compare_CopyVsLink -TstName "Recurse" -Path "$TestSrc\*" -Recurse
 
 # Test bad file-path with SilentlyContinue
 Copy-FilesAsHardlinks -Path '$TestSrc\*.FooBar' -Destination $TestDir -ErrorAction SilentlyContinue
 
-
-# Test pipeline
-$null = "$TestDir\Pipe\Sub1", "$TestDir\Pipe\Sub2" | ForEach-Object { New-Item -Path $_ -ItemType Directory }
-[array]$LnkItemS = "$TestSrc\Sub1", "$TestSrc\Sub2" | Copy-FilesAsHardlinks -Destination "$TestDir\Pipe" -PassThru -Force
+# Test pipeline to Copy-FilesAsHardlinks
+$DstDir = "$TestDir\Pipe"
+$null = "$DstDir\Sub1", "$DstDir\Sub2" | ForEach-Object { New-Item -Path $_ -ItemType Directory }
+[array]$LnkItemS = "$TestSrc\Sub1", "$TestSrc\Sub2" | Copy-FilesAsHardlinks -Destination $DstDir -PassThru -Force
 [array]$SrcFileS = "$TestSrc\Sub1", "$TestSrc\Sub2" | Get-ChildItem -Recurse -Force
 if ($LnkItemS.Count -ne $SrcFileS.Count)
 {
@@ -114,17 +120,51 @@ else
     "Pipe Success: Copied $($LnkItemS.Count) items" | Write-Host -ForegroundColor Green
 }
 
+# Test pipeline to Remove-HardLinks
+"$DstDir\Sub1", "$DstDir\Sub2" | Remove-HardLinks -Recurse -ErrorAction 'Inquire'
+[array]$FileS = Get-ChildItem -File -Path $DstDir -Recurse
+if ($FileS)
+{
+    "Pipe Error: Failed to remove $($FileS.Count) files:`n$($FileS.FullName -join "`n")" | Write-Host -ForegroundColor Red          
+}
+else 
+{
+    "Pipe Success: Removed all files in: $TestFolder\Pipe" | Write-Host -ForegroundColor Green
+}
+Remove-Item -Path $DstDir -Recurse -Force -ErrorAction Ignore # Remove top level Pipe folder
+
+
+# Corner cases
+Compare_CopyVsLink -TstName "Filter= *.txt" -Path "$TestSrc\*"  -Filter "*.txt" 
+Compare_CopyVsLink -TstName "Filter"        -Path "$TestSrc\*"
+Compare_CopyVsLink -TstName "No* "          -Path "$TestSrc"    -Recurse
+Compare_CopyVsLink -TstName "No* Exists"    -Path "$TestSrc"    -Recurse    -DestExists
+Compare_CopyVsLink -TstName "DestExists *"  -Path "$TestSrc\*"              -DestExists
+
+
+#Stupid Copy-Item edge cases that fail because Path has no pattern and no -Recurse => They want to just copy an empty folder"
+$TestEdgeCases = $false
+#$TestEdgeCases = $true
+if ($TestEdgeCases)
+{
+    "Start - Copy-Item edge cases that should fail ..." | Write-Host -ForegroundColor Magenta
+    Compare_CopyVsLink -TstName "DestExists" -Path "$TestSrc" -DestExists 
+    Compare_CopyVsLink -TstName "No* Filter" -Path "$TestSrc" -Filter "*"
+    "Done - Copy-Item edge cases that should have failed." | Write-Host -ForegroundColor Magenta
+}
+
 
 $TestBigDir = $false
 $TestBigDir = $true
 if ($TestBigDir)
 {
-    $SrcDir = "$ENV:USERPROFILE\.vscode"   # Has 10K+ files in 2K+ SubDirectories
+    $SrcDir = "$ENV:USERPROFILE\.vscode"   # Has 10K+ files in 2K+ SubDirectories and same internally hard linked files !
     $DstDir = "$TestDir"
-    $Exclude = $null
-    #$Exclude = @('*.dll', '*.exe', '*.pdb')  # Exclude files loaded by vscode runtime so that we can remove the hardlinks when running this test from within VsCode
     $Include = $null
+    $Exclude = $null
+    #$Exclude = @('*.dll', '*.exe', '*.pdb')  # Exclude files loaded by vscode runtime so that we can remove the hard links with Remove-Item -Recurse
 
+    Write-Host "Start .vscode test: Copy-FilesAsHardlinks"    
     [array]$CpyItemS = Copy-FilesAsHardlinks -PassThru -Path "$SrcDir*" -Destination $DstDir `
         -Exclude $Exclude -Recurse -Force -ErrorAction 'Stop' #| Tee-Object -FilePath "$TestDir\test.log"
 
@@ -133,11 +173,11 @@ if ($TestBigDir)
     [array]$DstFileS = $CpyItemS | Where-Object { !$_.PSIsContainer }
     if ($DstFileS.Count -ne $SrcFileS.Count)
     {
-        "Error: Files in Path=$($SrcFileS.Count) Destination=$($DstFileS.Count)" | Write-Host -ForegroundColor Red
+        ".vscode Error: Files in Path=$($SrcFileS.Count) Destination=$($DstFileS.Count)" | Write-Host -ForegroundColor Red
     }
     else 
     {
-        "Success: Copied $($DstFileS.Count) files" | Write-Host -ForegroundColor Green
+        ".vscode Success: Copied $($DstFileS.Count) files" | Write-Host -ForegroundColor Green
     }
 
     # Validate the dirs
@@ -146,21 +186,26 @@ if ($TestBigDir)
     [array]$DstDirS2 = $CpyItemS | Where-Object { $_.PSIsContainer }
     if ($DstDirS.Count -ne $SrcDirS.Count)
     {
-        "Error: Subdirectories in Path=$($SrcDirS.Count) Destination=$($DstDirS.Count)" | Write-Host -ForegroundColor Red
+        ".vscode Error: Subdirectories in Path=$($SrcDirS.Count) Destination=$($DstDirS.Count)" | Write-Host -ForegroundColor Red
     }
     else 
     {
-        "Success: Copied $($DstDirS.Count) Subdirectories" | Write-Host -ForegroundColor Green
+        ".vscode Success: Copied $($DstDirS.Count) Subdirectories" | Write-Host -ForegroundColor Green
     }
 
-    # Test recursive removal of locked files
-    Remove-Hardlinks -Path "$DstDir\.vscode" -FindTargetDir -AllFiles -ErrorAction 'Inquire'
+    # Test removal of locked files
+    Write-Host "Removing .vscode test: Remove-Hardlinks"    
+    Remove-Hardlinks -Path "$DstDir\.vscode" -Recurse -ErrorAction 'Inquire' -FindTargetDir
     [array]$FileS = Get-ChildItem -File -Path "$DstDir\.vscode" -Recurse
     if ($FileS)
     {
-        "Error: Failed to remove $($FileS.Count) files:`n$($FileS.FullName -join "`n")" | Write-Host -ForegroundColor Red          
+        ".vscode Error: Failed to remove $($FileS.Count) files:`n$($FileS.FullName -join "`n")" | Write-Host -ForegroundColor Red          
+        Remove-Item -Path $DstDir -Recurse -ErrorAction Ignore -Force
     }
-    Remove-Item -Path $DstDir -Recurse -ErrorAction Ignore # Remove remainig direcotories
+    else 
+    {
+        ".vscode Success: Removed all linked files in: $TestFolder\.vscode" | Write-Host -ForegroundColor Green
+    }
 }
 
 

@@ -112,11 +112,11 @@ function Copy-FilesAsHardlinks
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([System.IO.FileInfo], [System.IO.DirectoryInfo])]
     param (
-        [Parameter(Mandatory, ValueFromPipeline)]
+        [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
         [ValidateNotNullOrEmpty()]
         [string] $Path,
 
-        [Parameter()]
+        [Parameter(Position = 1)]
         [string] $Destination = $null,
 
         [Parameter()]
@@ -201,10 +201,10 @@ function Copy-FilesAsHardlinks
             $PathFolder = Resolve-Path -Path $Path
             $RelPathLen = $PathFolder.Path.Length
             [array]$BaseDirS = Get-Item -Path $PathFolder
-            if (Test-Path -Path $DstFolder)
+            if (Test-Path -Path $Destination)
             {
                 # This logic is for compatibility with Copy-Item()
-                $DstFolder = Join-Path -Path $DstFolder -ChildPath (Split-Path -Path $PathFolder.Path -Leaf)
+                $DstFolder = Join-Path -Path $Destination -ChildPath (Split-Path -Path $PathFolder.Path -Leaf)
             }
         }
 
