@@ -113,7 +113,7 @@ $null = "$DstDir\Sub1", "$DstDir\Sub2" | ForEach-Object { New-Item -Path $_ -Ite
 [array]$SrcFileS = "$TestSrc\Sub1", "$TestSrc\Sub2" | Get-ChildItem -Recurse -Force
 if ($LnkItemS.Count -ne $SrcFileS.Count)
 {
-    "Pipe Error: Itemss in Path=$($SrcFileS.Count) Destination=$($LnkItemS.Count)" | Write-Host -ForegroundColor Red
+    "Pipe Error: Items in Path=$($SrcFileS.Count) Destination=$($LnkItemS.Count)" | Write-Host -ForegroundColor Red
 }
 else 
 {

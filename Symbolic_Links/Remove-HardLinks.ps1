@@ -121,103 +121,106 @@ function Get-HardLinkTarget
 }
 
 
-<#
-.SYNOPSIS
-Deletes the specified file(s) taking into account that hard linked files can be locked by some external process
-
-.PARAMETER Path
-Parameter description
-#>
-function Remove-HardLink
-{
-    [CmdletBinding()]
-    param (
-        [Parameter(ValueFromPipeline, Position =0)]
-        [System.IO.FileInfo[]] $Path,
-
-        # Only needed for Powhershell 4.0 or Core
-        [Parameter()] 
-        [System.IO.FileSystemInfo[]] $TargetDir = $null
-    )
-
-    if ($Input)
-    {
-        # $Input is an automatic variable that references the pipeline objects
-        $Path = [System.IO.FileInfo[]]$Input
-    }
-
-    foreach ($File in $Path)
-    {
-        if ($File.LinkType -eq 'HardLink')
-        {
-            if ($File.Target)
-            {
-                # PowerShell 5.x
-                $File.MoveTo($File.Target[0])
-            }
-            else 
-            {
-                $TargetS = [WinUtil.NTFS]::GetHardLinks($File.FullName)
-                if ($TargetS)
-                {
-                    $File.MoveTo($TargetS[0])
-                }                
-            }
-        }
-        else 
-        {
-            $File.Delete()    
-        }
-    }
-}
-
-<#
-###### Unit test Remove-HardLink ######
-$TargetDir = Get-Item -Path 'C:\tmp'
-"$TargetDir\testL.txt", "$TargetDir\more\testL.txt", "$TargetDir\test.txt" | Remove-Item -ErrorAction Ignore
-"test" > "$TargetDir\test.txt"
-$null = New-Item -ItemType HardLink -Path "$TargetDir\testL.txt" -Target "$TargetDir\test.txt"
-$null = New-Item -Path C:\tmp\more -ErrorAction Ignore
-$null = New-Item -ItemType HardLink -Path "$TargetDir\more\testL.txt" -Target "$TargetDir\test.txt"
-
-Remove-Hardlink "$TargetDir\testL.txt", "$TargetDir\more\testL.txt", "$TargetDir\test.txt" -TargetDir $TargetDir
-#"$TargetDir\testL.txt", "$TargetDir\more\testL.txt", "$TargetDir\test.txt" | Remove-Hardlink -TargetDir $TargetDir
-Remove-Hardlink "$TargetDir\testL.txt", "$TargetDir\more\testL.txt", "$TargetDir\test.txt" -TargetDir $TargetDir
-#>
 
 
 <#
 .SYNOPSIS
-This function removes the hard linked tree structure created by Copy-FilesAsHardlinks()
+Deletes the specified file system items, simular to Remove-Item, with special handling
+of hard linked files which may be locked by external processes.
 
 .PARAMETER Path
-A path to the folder containing the files to delete.
+Specifies a path of the items being removed. Wildcard characters are permitted.
 
 .PARAMETER Recurse
 Recursively removes all hard lined files in (and under) the specified Path.
 #>
-function Remove-Hardlinks
+function Remove-HardLinks
 {
-    [CmdletBinding(DefaultParameterSetName = 'ByTargetDir')]
+    [CmdletBinding()]
     param (
-        [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
-        [string] $Path,
+        [Parameter(ValueFromPipeline, Position = 0)]
+        [string[]] $Path,
+
+        [Parameter()]
+        [string[]] $Include = $null,
+
+        [Parameter()]
+        [string[]] $Exclude = $null,
+
+        [Parameter()]
+        [string] $Filter = $null,
 
         [Parameter()]
         [switch] $Recurse
     )
 
-    process 
+    # $Input is an automatic variable that references the pipeline value
+    if ($Input)
     {
-        if (Test-Path -Path $Path)
-        {   
-            [array]$FileS = Get-ChildItem -Path $Path -Recurse:$Recurse -File
-            Remove-Hardlink -Path $FileS
-                        
-            if ($Recurse -and (Test-Path -Path $Path -PathType Container) )
-            {
-                Remove-Item -Path $Path -Recurse
-            }
-        }
+        $Path = [string[]]$Input
     }
+
+    foreach ($PathI in $Path) 
+    {
+        if ($PathI)
+        {   
+            $OneFolder = $false
+            $OnlyContainers = Test-Path -Path $PathI -PathType Container
+            if ($OnlyContainers)
+            {
+                [array]$PathS = (Resolve-Path -Path $PathI).Path
+                $OneFolder = $PathS.Count -eq 1
+                if (!$OneFolder)
+                {
+                    $PathS | Remove-Item
+                }
+            }
+            if ($OneFolder -or !$OnlyContainers)
+            {
+                $OnlyDirS = [System.Collections.ArrayList]::new()
+                [array]$FileS = Get-ChildItem -Path $PathI -Include $Include -Exclude $Exclude -Filter $Filter -Recurse:$Recurse
+                foreach ($File in $FileS)
+                {
+                    if ($File -is [System.IO.FileInfo])
+                    {
+                        if ($File.LinkType -eq 'HardLink')
+                        {
+                            if ($File.Target) # PowerShell 5.x
+                            {                        
+                                $File.MoveTo($File.Target[0])
+                            }
+                            else # PowerShell Core
+                            {
+                                $TargetS = [WinUtil.NTFS]::GetHardLinks($File.FullName)
+                                if ($TargetS)
+                                {
+                                    $File.MoveTo($TargetS[0])
+                                }                
+                            }
+                        }
+                        else
+                        {
+                            $File.Delete()    
+                        }
+                    }
+                    else
+                    {
+                        $null = $OnlyDirS.Add($File)
+                    }
+                }
+
+                # Remove directories
+                if ($OnlyDirS)
+                {
+                    $OnlyDirS | Sort-Object -Property FullName -Descending | Remove-Item
+                }
+                if ($OneFolder -and $OnlyContainers)
+                {
+                    Remove-Item -Path $PathI # Delete the folder, It better be empty
+                }                
+            }
+        }        
+    }
+
 }
+
