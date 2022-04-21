@@ -64,7 +64,7 @@ by using wildcard patterns. The default wildcard Path pattern is '*', whoch sele
 files and folders found in the top level folder of the path.
 Note: The Wildcard patterns, Filter, Include & Exclude parameters only apply to the 
 top level folder of the path parameter, and do not apply to files & folders discovered
-while recursing child folders, just like Copy-Intem().
+while recursing child folders, just like Copy-Item().
 
 .PARAMETER Destination
 Specifies a path to the folder into which the source files & folders are copied. 

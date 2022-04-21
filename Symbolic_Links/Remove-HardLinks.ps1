@@ -122,23 +122,46 @@ function Get-HardLinkTarget
 
 
 
-
 <#
 .SYNOPSIS
-Deletes the specified file system items, simular to Remove-Item, with special handling
-of hard linked files which may be locked by external processes.
+Deletes the specified file, simular to Remove-Item, with special handling of hard linked files 
+which may be locked by external processes. Passing a folder location as the Path argument with
+the -Recurse switch will delete all the hard linked files but also all the other folder contents 
+just like Remove-Item().
 
 .PARAMETER Path
-Specifies a path of the items being removed. Wildcard characters are permitted.
+Specifies one or more locations with files & folders to remove. Wildcard characters are permitted.
+Accepeted as pipeline input.
+
+.PARAMETER File
+Specifies one or more file objects to remove. The file object are of type: [System.IO.FileInfo]
+i.e. the files returned by the Get-ChildItem() or the Get-HardLinks() function. 
+Note: Powershell will automatically typecast a filename string to a [System.IO.FileInfo] object.
+Pipeline input is also accepted.
 
 .PARAMETER Recurse
 Recursively removes all hard lined files in (and under) the specified Path.
+
+.EXAMPLE
+Delete all contents in the specified parent folder, but the parent folder itself is not deleted.
+Remove-HardLinks -Path C:\Folder_With_Lined_Files\* -Recurse
+
+.EXAMPLE
+Delete all parent folder and all its content,
+Remove-HardLinks -Path C:\Folder_With_Lined_Files -Recurse
+
+.EXAMPLE
+Use Get-HardLinks() to retrieve some hard linked file objects which are then piped to Remove-HardLinks()
+Get-HardLinks -Path C:\Folder_With_Lined_Files -Include *.dll,*.ece -Recurse | Remove-HardLinks
 #>
 function Remove-HardLinks
 {
     [CmdletBinding()]
     param (
-        [Parameter(ValueFromPipeline, Position = 0)]
+        [Parameter(Mandatory, ValueFromPipeline, Position = 0, ParameterSetName = "ByFile")]
+        [System.IO.FileInfo[]] $File,
+
+        [Parameter(Mandatory, ValueFromPipeline, Position = 0, ParameterSetName = "ByPath")]
         [string[]] $Path,
 
         [Parameter()]
@@ -154,73 +177,91 @@ function Remove-HardLinks
         [switch] $Recurse
     )
 
+    function Delete_File([System.IO.FileInfo] $FileInfo)
+    {
+        if ($FileInfo.LinkType -eq 'HardLink')
+        {
+            if ($FileInfo.Target) # PowerShell 5.x
+            {                        
+                $FileInfo.MoveTo($FileInfo.Target[0])
+            }
+            else # PowerShell Core
+            {
+                $TargetS = [WinUtil.NTFS]::GetHardLinks($FileInfo.FullName)
+                if ($TargetS)
+                {
+                    $FileInfo.MoveTo($TargetS[0])
+                }                
+            }
+        }
+        else
+        {
+            $FileInfo.Delete()    
+        }
+    }
+
+
     # $Input is an automatic variable that references the pipeline value
     if ($Input)
     {
-        $Path = [string[]]$Input
+        $InpList = $Input
+        if ($InpList[0] -is [System.IO.FileInfo])
+        {
+            $File = [System.IO.FileInfo[]]$InpList
+        }
+        else 
+        {        
+            $Path = [string[]]$InpList
+        }
+    }
+
+    if ($File)
+    {
+        foreach ($Item in $File)
+        {
+            Delete_File -FileInfo $Item
+        }
+        return
     }
 
     foreach ($PathI in $Path) 
     {
         if ($PathI)
         {   
-            $OneFolder = $false
-            $OnlyContainers = Test-Path -Path $PathI -PathType Container
-            if ($OnlyContainers)
+            # Phase 1 - Remove files, Handling linked files separately
+            $ChildFolderS = [System.Collections.ArrayList]::new()
+            [array]$ChildItemS = Get-ChildItem -Path $PathI -Include $Include -Exclude $Exclude -Filter $Filter -Recurse:$Recurse
+            foreach ($Item in $ChildItemS)
             {
-                [array]$PathS = (Resolve-Path -Path $PathI).Path
-                $OneFolder = $PathS.Count -eq 1
-                if (!$OneFolder)
+                if ($Item -is [System.IO.FileInfo])
                 {
-                    $PathS | Remove-Item
+                    Delete_File -FileInfo $Item
+                }
+                else # Delay removal of folders until all the files have been removed 
+                {                    
+                    $null = $ChildFolderS.Add($Item)    
                 }
             }
-            if ($OneFolder -or !$OnlyContainers)
-            {
-                $OnlyDirS = [System.Collections.ArrayList]::new()
-                [array]$FileS = Get-ChildItem -Path $PathI -Include $Include -Exclude $Exclude -Filter $Filter -Recurse:$Recurse
-                foreach ($File in $FileS)
-                {
-                    if ($File -is [System.IO.FileInfo])
-                    {
-                        if ($File.LinkType -eq 'HardLink')
-                        {
-                            if ($File.Target) # PowerShell 5.x
-                            {                        
-                                $File.MoveTo($File.Target[0])
-                            }
-                            else # PowerShell Core
-                            {
-                                $TargetS = [WinUtil.NTFS]::GetHardLinks($File.FullName)
-                                if ($TargetS)
-                                {
-                                    $File.MoveTo($TargetS[0])
-                                }                
-                            }
-                        }
-                        else
-                        {
-                            $File.Delete()    
-                        }
-                    }
-                    else
-                    {
-                        $null = $OnlyDirS.Add($File)
-                    }
-                }
 
-                # Remove directories
-                if ($OnlyDirS)
+            # Phase 2 - Remove any folders included in $ChildItemS (= Wildcard,Filter,Include & Exclude specs)
+            if ($ChildFolderS)
+            {
+                # Delete the deepest child folders first
+                # The output from Get-ChildItem returned them in reversed dependency order
+                $ChildFolderS.Reverse()
+                # $ChildFolderS = $ChildFolderS| Sort-Object -Property FullName -Descending
+                foreach ($Folder in $ChildFolderS) 
                 {
-                    $OnlyDirS | Sort-Object -Property FullName -Descending | Remove-Item
+                    $Folder.Delete()
                 }
-                if ($OneFolder -and $OnlyContainers)
-                {
-                    Remove-Item -Path $PathI # Delete the folder, It better be empty
-                }                
+            }
+
+            # Phase 3 - Include the Parent folder ?
+            [array]$Parent = Resolve-Path -Path $PathI -ErrorAction Ignore # Ignore errors if PathI is a deleted file
+            if ($Parent -and $Parent.Count -eq 1)
+            {
+                Remove-Item -Path $Parent -Recurse:$Recurse
             }
         }        
     }
-
 }
-
