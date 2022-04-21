@@ -3,7 +3,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-. $PSScriptRoot\Copy-FilesAsHardlinks.ps1
+. $PSScriptRoot\Copy-HardLinks.ps1
 . $PSScriptRoot\Remove-Hardlinks.ps1
 
 $TestFolder = "HardLink_Test"
@@ -33,7 +33,7 @@ function Compare_CopyVsLink($TstName, $Path, $Filter = $null, [switch]$Recurse, 
     Write-Host "$TstName, Copy-Item vs HardLink: -Path $Path -Recurse:$Recurse -Filter $Filter"    
 
     # Test recursive removal
-    Remove-Hardlinks -Path "$TestDir\Link" -FindTargetDir -Recurse -ErrorAction 'Inquire'
+    Remove-Hardlinks -Path "$TestDir\Link" -Recurse -ErrorAction 'Inquire'
     [array]$FileS = Get-ChildItem -File -Path "$TestDir\Link" -Recurse
     if ($FileS)
     {
@@ -49,7 +49,7 @@ function Compare_CopyVsLink($TstName, $Path, $Filter = $null, [switch]$Recurse, 
     }
 
     # Copy links into 'Copy' dir so that returned file names in LnkItemS will match in MissingNameS test bellow
-    [array]$LnkItemS = Copy-FilesAsHardlinks -Path $Path -Filter $Filter -Destination "$TestDir\Copy" -Recurse:$Recurse -PassThru -Force
+    [array]$LnkItemS = Copy-HardLinks -Path $Path -Filter $Filter -Destination "$TestDir\Copy" -Recurse:$Recurse -PassThru -Force
     Move-Item -Path "$TestDir\Copy" -Destination "$TestDir\Link"
 
     if ($DestExists)
@@ -96,7 +96,7 @@ function Compare_CopyVsLink($TstName, $Path, $Filter = $null, [switch]$Recurse, 
 
 if (Test-Path -Path $TestDir)
 {
-    Remove-Item -Path $TestDir\* -Recurse -ErrorAction Stop
+    Remove-Item -Path "$TestDir\*" -Recurse -ErrorAction Stop
 }
 $null = New_DirTree $TestDir
 
@@ -104,12 +104,12 @@ $null = New_DirTree $TestDir
 Compare_CopyVsLink -TstName "Recurse" -Path "$TestSrc\*" -Recurse
 
 # Test bad file-path with SilentlyContinue
-Copy-FilesAsHardlinks -Path '$TestSrc\*.FooBar' -Destination $TestDir -ErrorAction SilentlyContinue
+Copy-HardLinks -Path '$TestSrc\*.FooBar' -Destination $TestDir -ErrorAction SilentlyContinue
 
-# Test pipeline to Copy-FilesAsHardlinks
+# Test pipeline to Copy-HardLinks
 $DstDir = "$TestDir\Pipe"
 $null = "$DstDir\Sub1", "$DstDir\Sub2" | ForEach-Object { New-Item -Path $_ -ItemType Directory }
-[array]$LnkItemS = "$TestSrc\Sub1", "$TestSrc\Sub2" | Copy-FilesAsHardlinks -Destination $DstDir -PassThru -Force
+[array]$LnkItemS = "$TestSrc\Sub1", "$TestSrc\Sub2" | Copy-HardLinks -Destination $DstDir -PassThru -Force
 [array]$SrcFileS = "$TestSrc\Sub1", "$TestSrc\Sub2" | Get-ChildItem -Recurse -Force
 if ($LnkItemS.Count -ne $SrcFileS.Count)
 {
@@ -164,9 +164,11 @@ if ($TestBigDir)
     $Exclude = $null
     #$Exclude = @('*.dll', '*.exe', '*.pdb')  # Exclude files loaded by vscode runtime so that we can remove the hard links with Remove-Item -Recurse
 
-    Write-Host "Start .vscode test: Copy-FilesAsHardlinks"    
-    [array]$CpyItemS = Copy-FilesAsHardlinks -PassThru -Path "$SrcDir*" -Destination $DstDir `
-        -Exclude $Exclude -Recurse -Force -ErrorAction 'Stop' #| Tee-Object -FilePath "$TestDir\test.log"
+    Write-Host "Start .vscode test: Copy-HardLinks"
+    $Perf = Measure-Command {    
+        [array]$CpyItemS = Copy-HardLinks -PassThru -Path "$SrcDir*" -Destination $DstDir `
+            -Exclude $Exclude -Recurse -Force -ErrorAction 'Stop' #| Tee-Object -FilePath "$TestDir\test.log"
+    }
 
     # Validate the files
     [array]$SrcFileS = Get-ChildItem -Path "$SrcDir\*" -Include $Include -Exclude $Exclude -File -Recurse -Force
@@ -177,7 +179,7 @@ if ($TestBigDir)
     }
     else 
     {
-        ".vscode Success: Copied $($DstFileS.Count) files" | Write-Host -ForegroundColor Green
+        ".vscode Success Time: $([int]$Perf.TotalSeconds), Copied $($DstFileS.Count) files" | Write-Host -ForegroundColor Green
     }
 
     # Validate the dirs
@@ -194,8 +196,8 @@ if ($TestBigDir)
     }
 
     # Test removal of locked files
-    Write-Host "Removing .vscode test: Remove-Hardlinks"    
-    Remove-Hardlinks -Path "$DstDir\.vscode" -Recurse -ErrorAction 'Inquire' -FindTargetDir
+    Write-Host "Removing .vscode test: Remove-Hardlinks"
+    $Perf = Measure-Command { Remove-Hardlinks -Path "$DstDir\.vscode" -Recurse -ErrorAction 'Inquire' }
     [array]$FileS = Get-ChildItem -File -Path "$DstDir\.vscode" -Recurse
     if ($FileS)
     {
@@ -204,7 +206,7 @@ if ($TestBigDir)
     }
     else 
     {
-        ".vscode Success: Removed all linked files in: $TestFolder\.vscode" | Write-Host -ForegroundColor Green
+        ".vscode Success Time: $([int]$Perf.TotalSeconds), Removed linked files in: $TestFolder\.vscode" | Write-Host -ForegroundColor Green
     }
 }
 

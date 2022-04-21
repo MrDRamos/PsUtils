@@ -1,3 +1,101 @@
+
+<#
+PowerShell 4.0 and PowerShell Core di not populate the File.Target property with 
+the hard linked files as all the PowerShell 5 versions do. 
+This C# code P/Invokes into the native win32 API's FindFirstFileNameW(), FindNextFileNameW()
+to retrieve the hardlinks targets.
+
+Credit: Michael Klement Apr 2021
+Issue: Powershell v7.2.0-preview.4 file Hard Link .Target get nothing #15139
+Uri: https://github.com/PowerShell/PowerShell/issues/15139
+#>
+Add-Type -Namespace WinUtil -Name NTFS -UsingNamespace System.Text, System.Collections.Generic, System.IO -MemberDefinition @'
+    #region WinAPI P/Invoke declarations
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr FindFirstFileNameW(string lpFileName, uint dwFlags, ref uint StringLength, StringBuilder LinkName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool FindNextFileNameW(IntPtr hFindStream, ref uint StringLength, StringBuilder LinkName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool FindClose(IntPtr hFindFile);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool GetVolumePathName(string lpszFileName, [Out] StringBuilder lpszVolumePathName, uint cchBufferLength);
+
+    public static readonly IntPtr INVALID_HANDLE_VALUE = (IntPtr)(-1); // 0xffffffff;
+    public const int MAX_PATH = 65535; // Max. NTFS path length.
+    #endregion
+
+    /// <summary>
+    //// Returns the enumeration of hardlinks for the given *file* as full file paths, if any,
+    //// excluding the input file itself.
+    /// </summary>
+    /// <remarks>
+    /// If the file has only one hardlink (itself) or the target volume doesn't support enumerating hardlinks,
+    /// an emtpty sting array is returned.
+    /// An exception occurs if you specify a non-existent path or a path to a
+    /// directory (directories don't support hardlinks)
+    /// </remarks>
+    public static string[] GetHardLinks(string filePath)
+    {
+      string fullFilePath = Path.GetFullPath(filePath);
+      if (Directory.Exists(fullFilePath))
+      {
+        throw new ArgumentException("Only files support hardlinks, \"" + filePath + "\" is a directory.");
+      }
+      StringBuilder sbPath = new StringBuilder(MAX_PATH);
+      uint charCount = (uint)sbPath.Capacity; // in/out character-count variable for the WinAPI calls.
+      // Get the volume (drive) part of the target file's full path (e.g., @"C:\")
+      GetVolumePathName(fullFilePath, sbPath, (uint)sbPath.Capacity);
+      string volume = sbPath.ToString();
+      // Trim the trailing "\" from the volume path, to enable simple concatenation
+      // with the volume-relative paths returned by the FindFirstFileNameW() and FindFirstFileNameW() functions,
+      // which have a leading "\"
+      volume = volume.Substring(0, volume.Length > 0 ? volume.Length - 1 : 0);
+      // Loop over and collect all hard links as their full paths.
+      IntPtr findHandle;
+      if (INVALID_HANDLE_VALUE == (findHandle = FindFirstFileNameW(fullFilePath, 0, ref charCount, sbPath)))
+      {
+        if (! File.Exists(fullFilePath))
+        {
+          throw new FileNotFoundException("File not found: " + filePath);
+        }
+        // Otherwise: the target volume doesn't support enumerating hardlinks.
+        return Array.Empty<string>();
+      }
+      List<string> links = new List<string>();
+      do
+      {
+        string fullHardlinkPath = volume + sbPath.ToString();
+        if (! fullHardlinkPath.Equals(fullFilePath, StringComparison.OrdinalIgnoreCase)) 
+        {
+          links.Add(fullHardlinkPath); // Add the full path to the result list.
+        }
+        charCount = (uint)sbPath.Capacity; // Prepare for the next FindNextFileNameW() call.
+      } while (FindNextFileNameW(findHandle, ref charCount, sbPath));
+      FindClose(findHandle);
+      return links.ToArray();
+    }
+'@
+
+<#
+The following adds a .HardLinks ETS property to System.IO.FileInfo instances (only on for files, 
+given that directories don't support hardlinks). Only on Windows, Unix isn't supported.
+#>
+<#
+Update-TypeData -Force -TypeName System.IO.FileInfo -MemberName HardLinks -MemberType ScriptProperty -Value {
+    if ($env:OS -ne 'Windows_NT')
+    { 
+        # Note: throw and Write-Error are quietly ignored in a ScriptProperty script block.
+        Write-Warning "The .HardLinks property is only supported on Windows." 
+        return [string[]] @()
+    }
+    [WinUtil.NTFS]::GetHardLinks($this.FullName)  
+}
+#>
+
+
 <#
 .SYNOPSIS
 Returns a list of fully qualified file names that are linked to this file.
@@ -18,20 +116,7 @@ function Get-HardLinkTarget
         {
             return $File.Target
         }
-
-        $FullName = $File.FullName
-        $Drive = $FullName.Substring(0, 2) 
-
-        # See Faster PS Workaround using FindFirstFileNameW(), FindNextFileNameW() win32 API's:
-        # https://github.com/PowerShell/PowerShell/issues/15139
-        [array]$AllLinkS = & fsutil.exe hardlink list $FullName
-        foreach ($Link in $AllLinkS) 
-        {
-            if ([string]::Compare($FullName, 2, $Link, 0, $Link.Length, $true) -ne 0)
-            {
-                $Drive + $Link
-            }
-        }
+        return [WinUtil.NTFS]::GetHardLinks($File.FullName)
     }
 }
 
@@ -67,31 +152,16 @@ function Remove-HardLink
         {
             if ($File.Target)
             {
-                $File.MoveTo($File.Target[0]) # 2x faster than Move-Item()
-                #Move-Item -Path $File.FullName -Destination $File.Target[0]
+                # PowerShell 5.x
+                $File.MoveTo($File.Target[0])
             }
-            else
+            else 
             {
-                # Powhershell 4.0 or Core do not populate the Target property !@#$
-                # Get-HardLinkTarget() spawns the time comsuming fsutil.exe process for each file.
-                # We try to optimize if $TargetDir was specified, by assuming that all the files to be removed
-                # are hard linked to files that reside in the $TargetDir folder, and have the same filename.
-                if (!$TargetDir -or $TargetDir.FullName -eq $File.DirectoryName)
+                $TargetS = [WinUtil.NTFS]::GetHardLinks($File.FullName)
+                if ($TargetS)
                 {
-                    [array]$LinkS = Get-HardLinkTarget -File $File
-                    $File.MoveTo($LinkS[0])
-                    continue
-                }
-
-                $TargetFile = $TargetDir.FullName + [System.IO.Path]::DirectorySeparatorChar + $File.Name
-                if (!(Test-Path -Path $TargetFile))
-                {
-                    # The file names did not match
-                    [array]$LinkS = Get-HardLinkTarget -File $File
-                    $File.MoveTo($LinkS[0])
-                    continue
-                }
-                $File.MoveTo($TargetFile)
+                    $File.MoveTo($TargetS[0])
+                }                
             }
         }
         else 
@@ -115,46 +185,6 @@ Remove-Hardlink "$TargetDir\testL.txt", "$TargetDir\more\testL.txt", "$TargetDir
 Remove-Hardlink "$TargetDir\testL.txt", "$TargetDir\more\testL.txt", "$TargetDir\test.txt" -TargetDir $TargetDir
 #>
 
-<#
-{
-    # Powhershell 4.0 or Core because they still do not populate the Target property !@#$
-    # Get-HardLinkTarget() spawns the time comsuming fsutil.exe process for each file
-    # Most of the following code is trying to optimize by makeing this call only once
-    # if the parameter TargetDir
-    # There optimization make 2 assumtions: (Which are true when created by Copy-HardLink() )
-    # 1) The hard linked file names are the same
-    # 2) All the files 
-    if (!$TargetDir)
-    {
-        [array]$LinkS = Get-HardLinkTarget -File $File
-        if (!$FindTargetDir -or $LinkS.Count -gt 2)
-        {
-            # We can't decide which one is the TargetDir
-            $File.MoveTo($LinkS[0])
-            continue
-        }
-
-        $TargetDirName = Split-Path -Path $LinkS[0] -Parent
-        if ($TargetDirName -eq $File.DirectoryName)
-        {
-            # The hard linked target name and file name must be the same
-            # for the TargetDir optimization to be valid
-            $File.MoveTo($LinkS[0])
-            continue
-        }
-        $TargetDirLen = $File.DirectoryName.Length
-    }
-    if (!$TargetDirLen)
-    {
-        #Note: Assumes all the other target files are under the same target directory
-        # And that the hard linked target name is the same as the file name.
-        $TargetDirName = $TargetDir.FullName
-        $TargetDirLen = $TargetDirName.Length
-    }
-    $TargetFile = $TargetDirName + $File.FullName.Substring($TargetDirLen)
-    $File.MoveTo($TargetFile)
-}
-#>
 
 <#
 .SYNOPSIS
@@ -165,18 +195,6 @@ A path to the folder containing the files to delete.
 
 .PARAMETER Recurse
 Recursively removes all hard lined files in (and under) the specified Path.
-
-.PARAMETER TargetDir
-Only needed for Powhershell 4.0 or Core because they still do not populate the Target property !@#$
-Optional path to a target folder that has the same sub directory tree structure as Path
-and to which the files in Path are hard linked.
-It helps speed up the removal process by not running fsutil.exe against each file.
-
-.PARAMETER FindTargetDir
-Only needed for Powhershell 4.0 or Core because they still do not populate the Target property !@#$
-Optional switch to optimize the removal process by automatically finding the TargetDir.
-Specify this switch if you know that the hard linked files have the same tree structure
-but you don't know the TargetDir path.
 #>
 function Remove-Hardlinks
 {
@@ -186,91 +204,19 @@ function Remove-Hardlinks
         [string] $Path,
 
         [Parameter()]
-        [switch] $Recurse,
-
-        # Only needed for Powhershell 4.0 or Core
-        [Parameter(ParameterSetName = 'ByTargetDir')] 
-        [string] $TargetDir = $null,
-
-        # Only needed for Powhershell 4.0 or Core
-        [Parameter(ParameterSetName = 'FindTargetDir')]
-        [switch] $FindTargetDir
+        [switch] $Recurse
     )
-
-    begin 
-    {
-        if ($TargetDir)
-        {
-            $TargetDir = (Resolve-Path -Path $TargetDir).Path
-        }
-    }
 
     process 
     {
         if (Test-Path -Path $Path)
-        {
-            $RPath = (Resolve-Path -Path $Path).Path.TrimEnd([System.IO.Path]::DirectorySeparatorChar)
-            $RDrive = Split-Path -Path $RPath -Qualifier # FsUtil does not include the drive in the returned links
-            [int]$RPathLen = $RPath.Length
-    
-            [array]$FileS = Get-ChildItem -Path $RPath -Recurse:$Recurse -File
-            $NewMethod = $false
-            $NewMethod = $true
-            if ($NewMethod)
-            {
-                Remove-Hardlink -Path $FileS  
-            }
-            else 
-            {
-                foreach ($File in $FileS)
-                {
-                    if ($File.LinkType -eq 'HardLink')
-                    {
-                        if ($File.Target)
-                        {
-                            $File.MoveTo($File.Target[0]) # 2x faster than Move-Item()
-                            #Move-Item -Path $File.FullName -Destination $File.Target[0]
-                        }
-                        else
-                        {
-                            # Powhershell 4.0 or Core because they still do not populate the Target property !@#$
-                            # See nice PS Workaround using FindFirstFileNameW(), FindNextFileNameW() win32 API's:
-                            # https://github.com/PowerShell/PowerShell/issues/15139
-                            if (!$TargetDir)
-                            {
-                                $FullName = $File.FullName
-                                [array]$LinkS = & fsutil.exe hardlink list $FullName
-                                if (!$FindTargetDir -or $LinkS.Count -gt 2)
-                                {
-                                    # We can't decide which one is the TargetDir
-                                    Move-Item -Path $FullName -Destination "$RDrive$($LinkS[0])"
-                                    continue
-                                }
-                                $RFile = $FullName.Substring($RPathLen)
-                                if ("$RDrive$($LinkS[0])" -eq $FullName)
-                                {
-                                    $TargetDir = "$RDrive$($LinkS[1].Substring(0, $LinkS[1].Length- $RFile.Length))"
-                                }
-                                else 
-                                {
-                                    $TargetDir = "$RDrive$($LinkS[0].Substring(0, $LinkS[0].Length- $RFile.Length))"
-                                }                    
-                            }
-                            $RFile = $File.FullName.Substring($RPathLen)
-                            $File.MoveTo("$TargetDir$RFile")
-                            #Move-Item -Path $File.FullName -Destination "$TargetDir$RFile"
-                        }
-                    } # HardLinks only
-                    else
-                    {
-                        $File.Delete()
-                    }
-                }                 
-            }
+        {   
+            [array]$FileS = Get-ChildItem -Path $Path -Recurse:$Recurse -File
+            Remove-Hardlink -Path $FileS
                         
-            if ($Recurse -and (Test-Path -Path $RPath -PathType Container) )
+            if ($Recurse -and (Test-Path -Path $Path -PathType Container) )
             {
-                Remove-Item -Path $RPath -Recurse
+                Remove-Item -Path $Path -Recurse
             }
         }
     }

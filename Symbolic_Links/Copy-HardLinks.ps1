@@ -33,27 +33,27 @@ https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/
 
 .EXAMPLE
 Make hard linked copies of all the files in C:\tmp into the new folder C:\tmp_test
-Copy-FilesAsHardlinks -Path 'C:\tmp'   -Destination 'C:\tmp_test'
-Copy-FilesAsHardlinks -Path 'C:\tmp\*' -Destination 'C:\tmp_test'
+Copy-Hardlinks -Path 'C:\tmp'   -Destination 'C:\tmp_test'
+Copy-Hardlinks -Path 'C:\tmp\*' -Destination 'C:\tmp_test'
 
 .EXAMPLE
 Copy the sub directory structure from C:\tmp to C:\tmp_test and recursively make 
 hard link copies of the source files into the respective destination directories.
-Copy-FilesAsHardlinks -Path 'C:\tmp' -Destination 'C:\tmp_test' -Recurse
+Copy-Hardlinks -Path 'C:\tmp' -Destination 'C:\tmp_test' -Recurse
 
 .EXAMPLE
 Copy the sub directory structure from C:\tmp to C:\tmp_test and recursively make 
 hard link copies of the '*.txt' source files into the respective destination directories.
-Copy-FilesAsHardlinks -Path 'C:\tmp' -Include '*.txt' -Destination 'C:\tmp_test' -Recurse
+Copy-Hardlinks -Path 'C:\tmp' -Include '*.txt' -Destination 'C:\tmp_test' -Recurse
 
 .EXAMPLE
 Test what what hard links would be created with -Whatif
-Copy-FilesAsHardlinks -Path 'C:\tmp\*.txt' -Destination 'C:\tmp_test' -Whatif
+Copy-Hardlinks -Path 'C:\tmp\*.txt' -Destination 'C:\tmp_test' -Whatif
 
 .EXAMPLE
 Make hard linked copies of the *.txt files in C:\tmp to the new folder C:\tmp_test
-Copy-FilesAsHardlinks -Path 'C:\tmp\*.txt'            -Destination 'C:\tmp_test'
-Copy-FilesAsHardlinks -Path 'C:\tmp' -Include '*.txt' -Destination 'C:\tmp_test'
+Copy-Hardlinks -Path 'C:\tmp\*.txt'            -Destination 'C:\tmp_test'
+Copy-Hardlinks -Path 'C:\tmp' -Include '*.txt' -Destination 'C:\tmp_test'
 
 
 
@@ -107,7 +107,7 @@ Overwrite any pre-existing files in the destination directory with the new hard 
 .PARAMETER PassThru
 Returns the created destiation files. By default, this cmdlet doesn't generate any output
 #>
-function Copy-FilesAsHardlinks
+function Copy-Hardlinks
 {
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([System.IO.FileInfo], [System.IO.DirectoryInfo])]
@@ -140,38 +140,39 @@ function Copy-FilesAsHardlinks
 
     process 
     {
-        function Copy_DirsLinkFiles([array]$SrcItemS, [int] $RelRelPathLen)
+        function HardLink_FolderItems([array]$SrcItemS) # $DstFolder, $RelPathLen)
         {
-            if ($SrcItemS)
+            foreach ($SrcItem in $SrcItemS)
             {
-                # Create new sub-directories
-                [array]$SrcDirS = $SrcItemS | Where-Object { $_.PSIsContainer }
-                foreach ($SrcDir in $SrcDirS)
+                $DstPath = $DstFolder + $SrcItem.FullName.Substring($RelPathLen)
+                if ($SrcItem -is [System.IO.FileInfo]) # Create hard linked files
                 {
-                    $DstPath = $DstFolder + $SrcDir.FullName.Substring($RelPathLen)
-                    if (!(Test-Path -Path $DstPath))
-                    {
-                        $NewDir = New-Item -ItemType Directory -Path $DstPath
-                        if ($PassThru)
-                        {
-                            Write-Output $NewDir # foward to pipeline
-                        }
-                    }
-                }
-            
-                # Create hard linked files
-                [array]$SrcFileS = $SrcItemS | Where-Object { !$_.PSIsContainer }
-                foreach ($SrcFile in $SrcFileS) 
-                {
-                    $DstPath = $DstFolder + $SrcFile.FullName.Substring($RelPathLen)
-                    $NewLink = New-Item -ItemType HardLink -Path $DstPath -Target $SrcFile.FullName -Force:$Force
                     if ($PassThru)
                     {
-                        Write-Output $NewLink # foward to pipeline
+                        New-Item -ItemType HardLink -Path $DstPath -Target $SrcItem.FullName -Force:$Force
+                    }
+                    else 
+                    {
+                        $null = New-Item -ItemType HardLink -Path $DstPath -Target $SrcItem.FullName -Force:$Force    
+                    }
+                }
+                else 
+                {                    
+                    if (!(Test-Path -Path $DstPath)) # Create new sub-directories
+                    {
+                        if ($PassThru)
+                        {
+                            New-Item -ItemType Directory -Path $DstPath
+                        }
+                        else 
+                        {
+                            $null = New-Item -ItemType Directory -Path $DstPath
+                        }
                     }
                 }
             }
         }
+        
         
         $DstFolder = $Destination
         [array]$BaseDirS = @()
@@ -184,11 +185,11 @@ function Copy-FilesAsHardlinks
                 $Folder = Split-Path -Path $Path -Parent
             }
             $PathFolder = Resolve-Path -Path $Folder
-            $RelPathLen = $PathFolder.Path.Length
+            [int]$RelPathLen = $PathFolder.Path.Length
 
             # Processs files in root folder specified by the wildcard pattern
             $SrcItemS = Get-ChildItem -Path $Path -Include $Include -Exclude $Exclude -Filter $Filter
-            Copy_DirsLinkFiles -SrcItemS $SrcItemS -RelPathLen $RelPathLen
+            HardLink_FolderItems -SrcItemS $SrcItemS #-RelPathLen $RelPathLen
 
             # Get sub-directories specified by the wildcard pattern
             if ($Recurse)
@@ -199,7 +200,7 @@ function Copy-FilesAsHardlinks
         else 
         {
             $PathFolder = Resolve-Path -Path $Path
-            $RelPathLen = $PathFolder.Path.Length
+            [int]$RelPathLen = $PathFolder.Path.Length
             [array]$BaseDirS = Get-Item -Path $PathFolder
             if (Test-Path -Path $Destination)
             {
@@ -231,8 +232,8 @@ function Copy-FilesAsHardlinks
 
             foreach ($SrcDir in $BaseDirS)
             {
-                [array]$SrcItemS = Get-ChildItem -Path $SrcDir.FullName -Force #include hidden files
-                Copy_DirsLinkFiles -SrcItemS $SrcItemS -RelPathLen $RelPathLen
+                $SrcItemS = Get-ChildItem -Path $SrcDir.FullName -Force #include hidden files
+                HardLink_FolderItems -SrcItemS $SrcItemS #-RelPathLen $RelPathLen
             }
         }
     }
