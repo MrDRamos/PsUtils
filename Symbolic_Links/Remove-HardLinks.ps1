@@ -106,17 +106,44 @@ files as all the powershell 5 versions do.
 function Get-HardLinkTarget
 {
     param (
-        [Parameter(ValueFromPipeline)]
-        [System.IO.FileInfo] $File
+        [Parameter(ValueFromPipeline, Position = 0, ParameterSetName = "ByFile")]
+        [System.IO.FileInfo[]] $File = $null,
+
+        [Parameter(ValueFromPipeline, Position = 0, ParameterSetName = "ByPath")]
+        [string[]] $Path = $null
     )
 
-    if ($File -and $File.LinkType -eq 'HardLink')
+    # $Input is an automatic variable that references the pipeline value
+    if ($Input)
     {
-        if ($File.Target)
+        $InpList = $Input
+        if ($InpList[0] -is [System.IO.FileInfo])
         {
-            return $File.Target
+            $File = [System.IO.FileInfo[]]$InpList
         }
-        return [WinUtil.NTFS]::GetHardLinks($File.FullName)
+        else 
+        {        
+            $Path = [string[]]$InpList
+        }
+    }
+    if ($Path)
+    {
+        $File = Get-Item -Path $Path
+    }
+
+    foreach ($Item in $File) 
+    {
+        if ($Item -and $Item.LinkType -eq 'HardLink')
+        {
+            if ($Item.Target)
+            {
+                Write-Output $Item.Target
+            }
+            else 
+            {
+                Write-Output [WinUtil.NTFS]::GetHardLinks($Item.FullName)                
+            }
+        }        
     }
 }
 
