@@ -99,7 +99,7 @@ function Get-VcTool([string] $FileName)
     }
 
     $FileName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
-    $VcTool = Get-ChildItem -Path "$(Get-VcToolsDir)\$($FileName).exe"
+    $VcTool = Get-ChildItem -Path "$(Get-VcToolsDir)\$($FileName).exe" -ErrorAction Ignore
     if ($VcTool)
     {
         return $VcTool.FullName
