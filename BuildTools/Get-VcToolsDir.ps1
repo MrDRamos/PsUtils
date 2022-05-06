@@ -1,10 +1,10 @@
 function Get-VcToolsDir
 {
     # 2022
-    [array]$VsEdition = Get-ChildItem -Path "${Env:ProgramFiles}\Microsoft Visual Studio\2022" -Directory
+    [array]$VsEdition = Get-ChildItem -Path "${Env:ProgramFiles}\Microsoft Visual Studio\2022" -Directory -ErrorAction Ignore
     if ($VsEdition)
     {
-        [array]$VCToolsInstallDir = Get-ChildItem -Path "$($VsEdition[0].FullName)\VC\Tools\MSVC" -Directory
+        [array]$VCToolsInstallDir = Get-ChildItem -Path "$($VsEdition[0].FullName)\VC\Tools\MSVC" -Directory -ErrorAction Ignore
         if ($VCToolsInstallDir)
         {
             return "$($VCToolsInstallDir[0].FullName)\bin\Hostx64\x64"
@@ -18,10 +18,10 @@ function Get-VcToolsDir
     }
     else
     {
-        [array]$VsEdition = Get-ChildItem -Path "${Env:ProgramFiles(x86)}\Microsoft Visual Studio\2019" -Directory
+        [array]$VsEdition = Get-ChildItem -Path "${Env:ProgramFiles(x86)}\Microsoft Visual Studio\2019" -Directory -ErrorAction Ignore
         if ($VsEdition)
         {
-            [array]$VCToolsInstallDir = Get-ChildItem -Path "$($VsEdition[0].FullName)\VC\Tools\MSVC" -Directory
+            [array]$VCToolsInstallDir = Get-ChildItem -Path "$($VsEdition[0].FullName)\VC\Tools\MSVC" -Directory -ErrorAction Ignore
             if ($VCToolsInstallDir)
             {
                 return "$($VCToolsInstallDir[0].FullName)\bin\Hostx64\x64"
