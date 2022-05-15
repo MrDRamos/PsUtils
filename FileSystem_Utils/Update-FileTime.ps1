@@ -29,7 +29,7 @@ function Update-FileTime
     # Make sure $Path is fully qualified
     if (![System.IO.Path]::IsPathFullyQualified($Path))
     {
-        $Path = [System.IO.Path]::GetFullPath($Path, $PWD)
+        $Path = [System.IO.Path]::GetFullPath($Path, $PWD.ProviderPath)
     }
 
     # Validate/Prepare the the folder
