@@ -26,8 +26,13 @@ function Update-FileTime
         [switch] $Force
     )
 
-    # Validate/prepare the the folder
-    $Path = [System.IO.Path]::GetFullPath($Path)
+    # Make sure $Path is fully qualified
+    if (![System.IO.Path]::IsPathFullyQualified($Path))
+    {
+        $Path = [System.IO.Path]::GetFullPath($Path, $PWD)
+    }
+
+    # Validate/Prepare the the folder
     $Folder = Split-Path -Path $Path -Parent
     if (!(Resolve-Path -Path $Folder -ErrorAction Ignore))
     {
@@ -60,8 +65,16 @@ function Update-FileTime
 
 Update-FileTime -Path $Path -LastWriteTime $LastWriteTime -Force:$Force
 
-# Define the alias: Touch
+
+<# 
+Define the alias: Touch
+# In Profile.ps1
+# Copy this file to: "$(Split-Path $PROFILE.CurrentUserAllHosts -Parent)\Scripts"
+New-Alias -Name 'Touch' -Value 'Update-FileTime.ps1'
+
+#When Dot Sources
 if (!(Test-Path -Path Alias:Touch)) 
 {
     New-Alias -Name 'Touch' -Value 'Update-FileTime'
 }
+#>
