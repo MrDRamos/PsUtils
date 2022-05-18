@@ -275,7 +275,7 @@ function Get-UsCensus_ByCounty([switch] $Force)
 $PopByCounty = Get-UsCensus_ByCounty #-Force
 if (!$State)
 {
-	$State = $PopByCounty | Select-Object State -Unique | Out-GridView -OutputMode Single -Title "Select a State"
+	$State = $PopByCounty.State | Sort-Object -Unique | Out-GridView -OutputMode Single -Title "Select a State"
 }
 if (!$State)
 {
