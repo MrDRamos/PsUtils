@@ -1,3 +1,14 @@
+<#
+.SYNOPSIS
+Test if any device is connected to local network, for the input 
+IP addresses specified.
+Returns list of (IP, MACAddress) records for the devices found.
+
+Instead of then sending out slow Ping requests, this function sends
+out UDP packates. Devices respond to these requests with thier MAC
+address which this computers network drivers record in ARP cache.
+We then parse the ARP records for found MAC addresses.
+#>
 [Cmdletbinding()]
 Param (
     [Parameter(Mandatory, Position=1)]
@@ -10,7 +21,21 @@ Param (
     [switch]$ClearARPCache
 )
 
-# https://xkln.net/blog/layer-2-host-discovery-with-powershell-in-under-a-second/
+<#
+.SYNOPSIS
+Test if any device is connected to local network, for the input 
+IP addresses specified.
+Returns list of (IP, MACAddress) records for the devices found.
+
+Instead of then sending out slow Ping requests, this function sends
+out UDP packates. Devices respond to these requests with thier MAC
+address which this computers network drivers record in ARP cache.
+We then parse the ARP records for found MAC addresses.
+
+.NOTES
+Code Inspired by:
+https://xkln.net/blog/layer-2-host-discovery-with-powershell-in-under-a-second/
+#>
 function Find-LANHosts 
 {
     [Cmdletbinding()]
