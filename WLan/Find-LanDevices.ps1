@@ -18,6 +18,10 @@ The default is to scan for devices on each enabled Physical adapter.
 .PARAMETER ResolveDnsName
 An additional DNS query is made to try to determine the device name associated
 with the found IP Addresses.
+
+.PARAMETER ClearARPCache
+Clears the local ARP cache (a mapping of IP-Address to MacAddress) 
+with old device records from prior network activity, before scanning for new devices.
 #>
 param
 (
@@ -28,8 +32,10 @@ param
     [uint[]] $InterfaceIndex = $null,
 
     [Parameter()]
-    [switch] $ResolveDnsName
+    [switch] $ResolveDnsName,
 
+    [Parameter()]
+    [switch] $ClearARPCache
 )
 
 $ActiveAdapterS = Get-NetAdapter -Physical | Where-Object Status -EQ "Up"
@@ -66,7 +72,7 @@ foreach ($ActiveIp in $ActiveIpS)
     }
     #EndRegion Init IpRange
 
-    $Result = & $PSScriptRoot\Test-LanIP.ps1 -IP $IpRange
+    $Result = & $PSScriptRoot\Test-LanIP.ps1 -IP $IpRange -ClearARPCache:$ClearARPCache
 
     if ($ResolveDnsName)
     {

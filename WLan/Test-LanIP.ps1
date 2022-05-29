@@ -1,13 +1,23 @@
 <#
 .SYNOPSIS
-Test if any device is connected to local network, for the input 
-IP addresses specified.
+Tests if one or more devices are active on the local network.
 Returns list of (IP, MACAddress) records for the devices found.
 
 Instead of then sending out slow Ping requests, this function sends
 out UDP packates. Devices respond to these requests with thier MAC
 address which this computers network drivers record in ARP cache.
 We then parse the ARP records for found MAC addresses.
+
+.PARAMETER IP
+List of IP Address to scan.
+
+.PARAMETER DelayMS
+The amount of time to wait after sending a UDP request to an IP Address.
+Default = 2 Miliseconds
+
+.PARAMETER ClearARPCache
+Clears the local ARP cache (a mapping of IP-Address to MacAddress) 
+with old device records from prior network activity, before scanning for new devices.
 #>
 [Cmdletbinding()]
 Param (
@@ -18,6 +28,7 @@ Param (
     [ValidateRange(0,15000)]
     [int]$DelayMS = 2,
     
+    [Parameter()]
     [switch]$ClearARPCache
 )
 
