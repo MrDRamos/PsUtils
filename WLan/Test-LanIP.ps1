@@ -59,23 +59,22 @@ function Find-LANHosts
         [ValidateRange(0,15000)]
         [int]$DelayMS = 2,
         
-        [ValidateScript({
-            $IsAdmin = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-            if ($IsAdmin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-                $True
-            } 
-            else {
-                Throw "Must be running an elevated prompt to use ClearARPCache"
-            }
-        })]
+        [Parameter()]
         [switch]$ClearARPCache
     )
+
 
     $ASCIIEncoding = New-Object System.Text.ASCIIEncoding
     $Bytes = $ASCIIEncoding.GetBytes("a")
     $UDP = New-Object System.Net.Sockets.Udpclient
 
-    if ($ClearARPCache) {
+    if ($ClearARPCache) 
+    {
+        $IsAdmin = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        if (!$IsAdmin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
+        {
+            Write-Warning "Must be running an elevated prompt to use ClearARPCache"
+        }
         arp -d
     }
 
