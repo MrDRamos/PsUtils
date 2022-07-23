@@ -14,10 +14,12 @@ or if the SecretManagement modules are not installed on this computer.
 The name (or key) of the secret to be retrieved. Wild card characters are not allowed.
 
 .PARAMETER Vault
-Optional name of the registered vault to retrieve the secret from. If no vault name is specified, then all registered vaults are searched.
+Optional name of the registered vault to retrieve the secret from. 
+If no vault name is specified, then all registered vaults are searched.
 
 .PARAMETER Force
-Specify this switch to interactively prompt the caller for a credentials even if a vault entry already exists.
+Specify this switch to interactively prompt the caller for credentials even if a vault entry already exists.
+The new credentials are automatically saved to the vault unless the AskToSave was specified.
 
 .PARAMETER AskToSave
 If the user entered new credentials then they are automatically saved to the vault.
@@ -32,7 +34,7 @@ Prompt user for new credential and then ask to override/save to the vault
 $Cred = Get-SecretCredential -KeyName 'TestKey' -Force -AskToSave
 
 .NOTES
-# To install & register the local secret store extention from the psgallery run:
+# To install & register the local secret store extension from the psgallery run:
 Install-Module -Name Microsoft.PowerShell.SecretStore -Repository PsGallery
 Register-SecretVault -ModuleName Microsoft.PowerShell.SecretStore -Name "local" -Description "https://github.com/powershell/secretstore"
 Set-SecretStoreConfiguration -Authentication "None"
