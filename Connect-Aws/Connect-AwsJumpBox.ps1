@@ -1,4 +1,5 @@
-$WallixRdpFile = Resolve-Path "$PSScriptRoot\AwsWallix.rdp"
+$WallixRdpIp = '10.136.64.60'
+#$WallixRdpFile = Resolve-Path "$PSScriptRoot\AwsWallix.rdp"
 $ErrorActionPreference = "Stop"
 
 #Region Helper Functions
@@ -333,14 +334,22 @@ Function Send-AppKeys
     {
         Throw "In Send-AppKeys(): Failed to activate target application window"
     }
-    Wait-ForWindow -WinTitle $WinTitle
+    $IsShowing = Wait-ForWindow -WinTitle $WinTitle -PassThru
 
-    IF ($Keys) 
+    if ($Keys) 
     {
         Initialize_AppInterAction
-        # https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualbasic.devices.keyboard?view=netframework-4.8
-        $MyKeyboard = New-Object -TypeName "Microsoft.VisualBasic.Devices.Keyboard"
-        $MyKeyboard.SendKeys($Keys, !$DontWaitForKeys)
+        if ($IsShowing)
+        {
+            # https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualbasic.devices.keyboard?view=netframework-4.8
+            $MyKeyboard = New-Object -TypeName "Microsoft.VisualBasic.Devices.Keyboard"
+            $MyKeyboard.SendKeys($Keys, !$DontWaitForKeys)
+        }
+        elseif ($ErrorActionPreference -notin @('SilentlyContinue', 'Ignore', 'Continue'))
+        {
+            Write-Host "Failed to activate: $WinTitle" -ForegroundColor Red
+            Exit 1
+        }
     }
 }
 
@@ -460,7 +469,11 @@ Function Wait-ForWindow
         [ValidateNotNullOrEmpty()]
         [string] $WinTitle,
 
-        [int] $TimeoutSec = 2
+        [Parameter()]
+        [int] $TimeoutSec = 2,
+
+        [Parameter()]
+        [switch] $PassThru
     )
 
     if ($Process)
@@ -491,6 +504,11 @@ Function Wait-ForWindow
         }
         $NowTime = Get-Date
     } until ($IsShowing -or ($EndTime -lt $NowTime))
+
+    if ($PassThru)
+    {
+        return $IsShowing
+    }
     if (!$IsShowing)
     {
         Write-Host "Failed to activate: $WinTitle" -ForegroundColor Red
@@ -598,10 +616,20 @@ if ($WalixProcess)
 }
 # Start Wallix RDP session
 Write-Host "Please don't switch focus from the Walix window ..."
-$WalixProcess = Start-Process -FilePath mstsc.exe -ArgumentList $WallixRdpFile -PassThru
-Start-Sleep 3
+if ($WallixRdpIp)
+{
+    $WalixProcess = Start-Process -FilePath mstsc.exe -ArgumentList @("/v:$WallixRdpIp", '/w:1280', '/w:1024') -PassThru
+}
+else
+{
+    $WalixProcess = Start-Process -FilePath mstsc.exe -ArgumentList @($WallixRdpFile, '/w:1280', '/w:1024') -PassThru
+}
+# Wait for RDP process to start and certificate warning
+Start-Sleep -Seconds 2
+Send-AppKeys -WinTitle 'Remote Desktop Connection' -Keys "y" -ErrorAction SilentlyContinue # Continue with certificate warning
 
 # Wallix Login
+Start-Sleep -Seconds 1
 Send-AppKeys -Process $WalixProcess -Keys "$WallixUsr`{TAB}"
 Send-AppKeys -Process $WalixProcess -Keys "$WallixPwd`~"
 
