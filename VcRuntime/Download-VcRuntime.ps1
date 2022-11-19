@@ -38,9 +38,9 @@ function Get-Vc2015_2022Runtime
     )
 
     $Uri = "https://download.visualstudio.microsoft.com/download/pr/89a3b9df-4a09-492e-8474-8f92c115c51d/B1A32C71A6B7D5978904FB223763263EA5A7EB23B2C44A0D60E90D234AD99178/VC_redist.x64.exe" # Sep 25 2020
-    $Uri = "https://aka.ms/vs/17/release/vc_redist.x64.exe"                                                                                                                                  # Jan  5 2022
     $Uri = "https://download.visualstudio.microsoft.com/download/pr/d22ecb93-6eab-4ce1-89f3-97a816c55f04/37ED59A66699C0E5A7EBEEF7352D7C1C2ED5EDE7212950A1B0A8EE289AF4A95B/VC_redist.x64.exe" # Jan  5 2022
-    Write-Host "Downloading common VC 2015-2022 runtime from Jan/5/2022 to:`n$Outfile"
+    $Uri = "https://aka.ms/vs/17/release/vc_redist.x64.exe"  
+    Write-Host "Downloading common VC 2015-2022 runtime to:`n$Outfile"
     Invoke-RestMethod -Method Get -Uri $Uri -OutFile $Outfile
 
     if ($Passthru)
