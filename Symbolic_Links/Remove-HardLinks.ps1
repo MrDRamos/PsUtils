@@ -1,6 +1,6 @@
 
 <#
-PowerShell 4.0 and PowerShell Core di not populate the File.Target property with 
+PowerShell 4.0 and PowerShell Core do not populate the File.Target property with 
 the hard linked files as all the PowerShell 5 versions do. 
 This C# code P/Invokes into the native win32 API's FindFirstFileNameW(), FindNextFileNameW()
 to retrieve the hardlinks targets.
