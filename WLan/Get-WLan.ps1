@@ -13,72 +13,73 @@ Get-WLan | Format-Table
 #>
 param()
 
+function New_Wlan()
+{
+    return [pscustomobject] @{
+        Interface          = ''
+        SSID               = ''
+        Channel            = ''
+        Signal             = ''
+        RadioType          = ''
+        Band               = ''
+        Authentication     = ''
+        BSSID              = ''
+        NetworkType        = ''
+        Encryption         = ''
+        'BasicRates(Mbps)' = ''
+        'OtherRates(Mbps)' = ''
+    }
+}
 
 function Get-WLan
 {
-    [int]$HidenCount = 0
-    [int]$LineNo = 0
-    #$WlanS = @()
     $WlanS = [System.Collections.ArrayList]::new()
+    $Interface = ""
 
-    [string[]]$outLineS = & netsh.exe wlan show networks mode=Bssid
-    while ($LineNo -lt $outLineS.Count)
+    [string[]]$OutLineS = & netsh.exe wlan show networks mode=Bssid
+    $MatchLineS = $OutLineS | Select-String '\s*(.*)\s+:\s+(.*)'
+    foreach ($MatchLine in $MatchLineS) 
     {
-        $Line = $outLineS[$LineNo++]
-        if ($Line.StartsWith("SSID "))
-        {
-            $Name = $Line.Substring($Line.IndexOf(":")+1).Trim()
-            $Line = $outLineS[$LineNo++]
-            $NetType = $Line.Substring($Line.IndexOf(":")+1).Trim()
-            $Line = $outLineS[$LineNo++]
-            $Authentication = $Line.Substring($Line.IndexOf(":")+1).Trim()
-            $Line = $outLineS[$LineNo++]
-            $Encryption = $Line.Substring($Line.IndexOf(":")+1).Trim()
-            $Line = $outLineS[$LineNo++]
-            while ($Line.StartsWith("    BSSID "))
-            {
-                if ($Name)
+        $GroupS = $MatchLine.Matches.Groups
+        $Key = ($GroupS[1].Value -split ' ')[0]
+        $Value = $GroupS[2].Value.Trim()
+        switch ($Key) {
+            'Interface' { $Interface = $Value; break }
+            'SSID' {
+                $WlanSsid = New_Wlan
+                $WlanSsid.Interface = $Interface
+                $WlanSsid.SSID = $Value
+                if ([string]::IsNullOrWhiteSpace($Value))
                 {
-                    $SSID = $Name
+                    $WlanSsid.SSID = '-hidden-' + ($GroupS[1].Value -split ' ')[1]
                 }
-                else
-                {
-                    $HidenCount++            
-                    $SSID = "-hidden-$HidenCount"
-                }
-                $BSSID = $Line.Substring($Line.IndexOf(":")+1).Trim()
-                $Line = $outLineS[$LineNo++]
-                #$Signal = [int]($Line.Substring($Line.IndexOf(":")+2) -replace "\%\s","")
-                $Signal = $Line.Substring($Line.IndexOf(":")+1).Trim()
-                $Line = $outLineS[$LineNo++]
-                $RadioType = $Line.Substring($Line.IndexOf(":")+1).Trim()
-                $Line = $outLineS[$LineNo++]
-                $Channel = [int]($Line.Substring($Line.IndexOf(":")+1))
-                $Line = $outLineS[$LineNo++]
-                $BasicRates = $Line.Substring($Line.IndexOf(":")+1).Trim()
-                $Line = $outLineS[$LineNo++]
-                $OtherRates = $Line.Substring($Line.IndexOf(":")+1).Trim()
-                $Line = $outLineS[$LineNo++]
-
-                $Wlan = [pscustomobject] @{
-                    SSID = $SSID
-                    Channel = $Channel
-                    Signal = $Signal
-                    RadioType = $RadioType
-                    Authentication = $Authentication
-                    BSSID = $BSSID
-                    NetworkType = $NetType
-                    Encrption = $Encryption
-                    "BasicRates(Mbps)" = $BasicRates
-                    "OtherRates(Mbps)" = $OtherRates
-                }
-                #$WlanS += $Wlan
-                [void]$WlanS.add($Wlan)
+                break 
             }
+            'Network' { $WlanSsid.NetworkType = $Value; break }
+            'Authentication' { $WlanSsid.Authentication = $Value; break }
+            'Encryption' { $WlanSsid.Encryption = $Value; break }
+
+            'BSSID' {
+                $Wlan = New_Wlan
+                [void]$WlanS.Add($Wlan)
+                $Wlan.Interface = $WlanSsid.Interface
+                $Wlan.SSID = $WlanSsid.SSID
+                $Wlan.NetworkType = $WlanSsid.NetworkType
+                $Wlan.Authentication = $WlanSsid.Authentication
+                $Wlan.Encryption = $WlanSsid.Encryption
+                $Wlan.BSSID = $Value
+                break 
+            }
+            'Channel' { $Wlan.Channel = [int]$Value; break }
+            'Signal' { $Wlan.Signal = $Value; break }
+            'Radio' { $Wlan.RadioType = $Value; break }
+            'Band' { $Wlan.Band = $Value; break }
+            'Basic' { $Wlan.'BasicRates(Mbps)' = $Value; break }
+            'Other' { $Wlan.'OtherRates(Mbps)' = $Value; break }
         }
     }
 
-    return $WlanS | Sort-Object -Property Channel, @{Expression = "Signal"; Descending = $True}
+    return $WlanS | Sort-Object -Property Band, Channel, @{Expression = "Signal"; Descending = $True }
 }
 
 $Retval = Get-WLan
