@@ -58,8 +58,7 @@ foreach ($ActiveIp in $ActiveIpS)
     $NetAddr64 = [System.Net.IPAddress]::HostToNetworkOrder($IPAddrObj.Address) -shr 32
     # We need to typecast from Int64 to UInt32
     [UInt32]$NetAddr = [BitConverter]::ToUInt32([BitConverter]::GetBytes($NetAddr64))
-    $MaskPow = 1 + [Int]([math]::Log($MaskBits, 2))
-    $BaseAddr = ($NetAddr -shr $MaskPow) -shl $MaskPow
+    $BaseAddr = ($NetAddr -shr $MaskBits) -shl $MaskBits
 
     $IpRange = foreach ($Idx in 1..($AddrRange -1)) 
     {
