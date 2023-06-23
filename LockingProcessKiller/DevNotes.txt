@@ -1,0 +1,13 @@
+TODO:
+
+-Use updated version of Kill_Process() ->  Stop-CimProcess()
+  - Include VmScript_StopProcessTree.ps1
+  
+-Add ability to kill child process:
+  - Include VmScript_StopProcessTree.ps1
+  - call Stop-ProcessTree()
+  
+-Can dependency on handle.exe from SystemInternals be replaced:
+  see https://github.com/pldmgg/misc-powershell/blob/master/MyFunctions/PowerShellCore_Compatible/Get-FileLockProcess.ps1
+  see https://www.gangofcoders.net/solution/powershell-script-to-check-an-application-thats-locking-a-file/
+  
