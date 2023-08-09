@@ -225,7 +225,7 @@ function Get-VcRuntime($VerRegex = $null)
 
 <#
 .SYNOPSIS
-Returns the number of VisualStudion C++ runtimes installed on this Computer
+Returns the number of VisualStudio C++ runtimes installed on this Computer
 #>
 function Test-VcRuntime($VerRegex = $null)
 {
