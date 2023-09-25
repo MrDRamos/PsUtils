@@ -41,8 +41,8 @@ Write-Host "`nInstall stable release using:" -ForegroundColor Cyan
 "@ | Write-Host
 
 switch (Read-Host -Prompt "`n? Install now using method #1..4 ") 
-{
-    1 { Invoke-Expression "& { `$(Invoke-RestMethod 'https://aka.ms/install-powershell.ps1') } -UseMSI" }
+{ 
+    1 { Invoke-Expression "& { $(Invoke-RestMethod 'https://aka.ms/install-powershell.ps1') } -UseMSI" }
     2 {
         $metadata = Invoke-RestMethod "https://raw.githubusercontent.com/PowerShell/PowerShell/master/tools/metadata.json"
         $release = $metadata.StableReleaseTag -replace '^v'
