@@ -4,6 +4,7 @@ Write-Host "GitHub Links:" -ForegroundColor Cyan
     ChangeLog = "https://github.com/PowerShell/PowerShell/tree/master/CHANGELOG"
     Releases  = "https://github.com/PowerShell/PowerShell/releases"
     Install   = 'https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows'
+    MsiPkgUrl = "`"https://github.com/PowerShell/PowerShell/releases/download/v`$VER/PowerShell-`$VER-win-x64.msi`""
 } | Format-List | Out-String).Trim()
 
 Write-Host "`nRelease Versions:" -ForegroundColor Cyan
