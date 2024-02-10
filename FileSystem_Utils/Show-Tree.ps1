@@ -1,37 +1,37 @@
 ﻿<#
 .SYNOPSIS
 Wrapper around the DOS TREE command that allows clipping the displayed tree to a given depth level.
-Also accepts PowerShell pipeline input of the Path paramter.
+Also accepts PowerShell pipeline input of the Path parameter.
 
 .PARAMETER Path
 The root path of the TREE. The default is the current working directory
 
 .PARAMETER Depth
-By default TREE shows the entire subfolder structure by recursing through all levels.
-Specify a Depth value to restrict the subfolder level to display.
+By default TREE shows the entire sub-folder structure by recusing through all levels.
+Specify a Depth value to restrict the sub-folder level to display.
 
 .PARAMETER Files
 By default TREE only shows folders. Specify this switch to also show files
 
-.PARAMETER Ascii
+.PARAMETER ASCII
 By default TREE uses graphic characters in the DOS Code-Page to draw nice tree connections.
 Specify this switch to substitute the tree connections with 7-Bit ASCII characters.
 #>
 [CmdletBinding()]
 param (
-    [Parameter(Position = "1", ValueFromPipeline = $True)]
+    [Parameter(Position = '1', ValueFromPipeline = $True)]
     [object] $Path = $PWD,
 
     [Parameter()]
-    [Alias("D")]
+    [Alias('D')]
     [int] $Depth = 0,
 
     [Parameter()]
-    [Alias("F")]
+    [Alias('F')]
     [switch] $Files,
 
     [Parameter()]
-    [Alias("A")]
+    [Alias('A')]
     [switch] $Ascii
 )
 
@@ -39,16 +39,16 @@ param (
 $ParamS = @($Path)
 if ($Files)
 {
-    $ParamS += "/F"
+    $ParamS += '/F'
 }
 if ($Ascii)
 {
-    $ParamS += "/A"
-    $DepthPattern = "[\|\+\- \\]{4,4}"
+    $ParamS += '/A'
+    $DepthPattern = '[\|\+\- \\]{4,4}'
 }
 else 
 {
-    $DepthPattern = "[│─├ └]{4,4}"
+    $DepthPattern = "[`u{2502}`u{2500}`u{251c}`u{2514} ]{4,4}" ##//4 Box Drawing Chars "[│─├└ ]{4,4}"
 }
 
 if ($Depth -lt 1)
@@ -57,7 +57,7 @@ if ($Depth -lt 1)
 }
 else 
 {
-    $DepthFilter = "^"
+    $DepthFilter = '^'
     for ($i = 0; $i -le $Depth; $i++) 
     {
         $DepthFilter += $DepthPattern
