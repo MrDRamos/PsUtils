@@ -48,7 +48,7 @@ function New-MutexSingleton
         catch [System.Threading.AbandonedMutexException]
         {
             # When a thread/process abandons a mutex, the exception is thrown in the next thread/process that acquires the mutex
-            Write-Host "Aquired abandoned mutex: $Name; $($_.Exception.Message)"
+            Write-Host "Acquired abandoned mutex: $Name; $($_.Exception.Message)"
             $Mutex = $_.Exception.Mutex
             if ($Mutex)
             {
@@ -121,9 +121,9 @@ if ($UsrInp -eq 'e')
 {
     if (!($AppMutex.WaitOne($MaxWaitMilliSec)))
     {
-        Write-Host "waitone" -ForegroundColor Magenta
+        Write-Host "WaitOne()" -ForegroundColor Magenta
         $Mutex.Dispose()
-        Write-Host "dispose()" -ForegroundColor Magenta
+        Write-Host "Dispose()" -ForegroundColor Magenta
         $Mutex = $null
     }    
     Throw "Exit & abandon Mutex"
