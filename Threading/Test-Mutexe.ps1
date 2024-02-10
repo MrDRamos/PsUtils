@@ -2,11 +2,11 @@
 
 <#
 .Parameter Name
-Note: The allowed characters for the mutex name are restricted (simular to file names).
+Note: The allowed characters for the mutex name are restricted (similar to file names).
 The Name should not contain back '\' characters.
 
 .Parameter MaxWaitMiliSec
-The maxixmum amount of time to wait for an other process to release the mutex.
+The maximum amount of time to wait for an other process to release the mutex.
 Default = 0. Set to -1 to wait indefinitely
 
 .Parameter Scope
@@ -73,7 +73,7 @@ function New-MutexSingleton
 
 
 # Release the singleton app mutex
-# A mutex is flaged as abandoned if the app/thread exits without releasing it.
+# A mutex is flagged as abandoned if the app/thread exits without releasing it.
 # Beginning in version 2.0 of the .NET Framework, an AbandonedMutexException is thrown in the next thread that acquires the mutex!
 function Clear-MutexSingleton
 {
@@ -105,7 +105,7 @@ function Clear-MutexSingleton
 
 #### Main ####
 
-# Auquire the singleton application mutex
+# Acquire the singleton application mutex
 $AppName = 'MyAppName'
 $Script:AppMutex = New-MutexSingleton -Name $AppName
 if (!$AppMutex)
