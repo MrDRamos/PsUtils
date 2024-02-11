@@ -1,6 +1,6 @@
 
 
-# Example: Test-KeyPressed -Keys @([system.consolekey]::Escape, [system.consolekey]::Enter)
+# Example: Test-KeyPressed -Keys @([system.consolekey]::Z, [system.consolekey]::Enter)
 function Test-KeyPressed([array]$KeyS = @([system.consolekey]::Escape), [switch] $AnyKey)
 {
     $Retval = $false
@@ -16,30 +16,30 @@ function Test-KeyPressed([array]$KeyS = @([system.consolekey]::Escape), [switch]
 }
 
 
-function Write-Log($Message, [switch]$NoNewline)
+function Write-Log($Message, [switch]$NoNewline, $ForegroundColor = 'Gray')
 {
     $Message | Add-Content -Path "Test-HandleExitingEvent.log" -NoNewline:$NoNewline
-    Write-Host $Message -NoNewline:$NoNewline
+    Write-Host $Message -NoNewline:$NoNewline -ForegroundColor:$ForegroundColor
 }
 
 
 $FinalizeFlag = 0   # Is set to 1 by first caller to OnAbortScript()
 function Global:OnAbortScript([string] $Reason = '')
 {
-    Write-Log "In OnAbortScript() because: $Reason"
+    Write-Log "In OnAbortScript() because: $Reason" -ForegroundColor Red
     # Avoid race conditions when calling this function
     if ([Threading.Interlocked]::CompareExchange([ref]$FinalizeFlag, -1<#NewVal#>, 0<#TestVal#>) -eq 0<#OldVal#>)
     {
         try 
         {
-            Write-Log "OnAbortScript() starting graceful shutdown"
+            Write-Log "  OnAbortScript() starting graceful shutdown in 3 seconds ..." -ForegroundColor Magenta
             # ... Add code to release resources
-            Start-Sleep -Seconds 5
-            Write-Log "OnAbortScript() finished graceful shutdown"
+            Start-Sleep -Seconds 3
+            Write-Log "  OnAbortScript() finished graceful shutdown" -ForegroundColor Magenta
         }
         catch 
         {
-            Write-Log ('Fatal exception in OnAbortScript(): ' + $_.Exception.Message)
+            Write-Log ('Fatal exception in OnAbortScript(): ' + $_.Exception.Message) -ForegroundColor Red
         }
         finally
         {
@@ -56,9 +56,6 @@ function Global:OnAbortScript([string] $Reason = '')
 
 
 ###### Main ######
-#
-# PowerShell command to test this program:
-# rm .\Test-HandleExitingEvent.log; Start-Process -FilePath powershell -ArgumentList '-NoProfile','-File .\Test-HandleExitingEvent.ps1' -wait; cat .\Test-HandleExitingEvent.log
 #
 # 'PowerShell.Exiting' event is called when the PowerShell engine is exiting.
 # https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/register-engineevent?view=powershell-7.4
@@ -94,26 +91,34 @@ function Send-CtrlC([int] $ProcessID)
 
 $MaxRunTimeSec = 30
 Write-Log "Started Test-HandleExitingEvnet.ps1 - Program ID: $Pid"
+Write-Log "Command to test this program in seperate PowerShell process:"
+Write-Log "  rm .\Test-HandleExitingEvent.log; Start-Process -FilePath powershell -ArgumentList '-NoProfile','-File .\Test-HandleExitingEvent.ps1' -wait; cat .\Test-HandleExitingEvent.log"
 Write-Log "Process loop will exit after: $MaxRunTimeSec seconds"
-Write-Log 'Or press <ESC> key to exit normally'
+Write-Log 'Or press <Z> key to exit normally'
 Write-Log 'Or press <Ctrl>C key to gracefully stop PowerShell & trigger the "PowerShell.Exiting" event handler'
 
 Get-EventSubscriber -SourceIdentifier 'PowerShell.Exiting' -ErrorAction Ignore | Unregister-Event
 $null = Register-EngineEvent -SourceIdentifier 'PowerShell.Exiting' -Action { OnAbortScript -Reason 'PowerShell.Exiting Event' }
 
 $EndTime = (Get-Date).AddSeconds($MaxRunTimeSec)
+$ExitLoop = $false
 do
 {
     Write-Log "." -NoNewline
     Start-Sleep -Milliseconds 500
-    if (Test-KeyPressed)
+    if (Test-KeyPressed -KeyS @([system.consolekey]::Z))
     {
-        Write-Log ' The <ESC> key was pressed'
-        break
+        Write-Log ' The <Z> key was pressed'
+        $ExitLoop = $true
     }
-} while ((Get-Date) -lt $EndTime)
+    if ($EndTime -lt (Get-Date))
+    {
+        Write-Log " MaxRunTimeSec: $MaxRunTimeSec expired"
+        $ExitLoop = $true
+    }
+} until ($ExitLoop)
 
 #Get-EventSubscriber -SourceIdentifier 'PowerShell.Exiting' -Force -ErrorAction Ignore | Unregister-Event
-OnAbortScript -Reason "Normal ShutDown"
-Write-Log 'Closing in 5 seconds ...'
-Start-Sleep -Seconds 5
+#OnAbortScript -Reason "Normal ShutDown"
+Write-Log 'Closing in 2 seconds ...'
+Start-Sleep -Seconds 2
