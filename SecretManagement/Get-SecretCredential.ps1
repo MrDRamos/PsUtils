@@ -18,7 +18,7 @@ The new credentials are automatically saved to the vault unless the AskToSave wa
 
 .PARAMETER AskToSave
 If the user entered new credentials then they are automatically saved to the vault.
-Set the AskToSave switch, to first prompt the caller for permision to save the new credentials.
+Set the AskToSave switch, to first prompt the caller for permission to save the new credentials.
 
 .EXAMPLE
 $Cred = Get-SecretCredential -KeyName 'TestKey'
