@@ -1,5 +1,5 @@
 <#
-Exiiting toools
+Existing tools
 Getting Directory Sizes in PowerShell
     https://devblogs.microsoft.com/scripting/getting-directory-sizes-in-powershell/
 PSFolderSize
@@ -20,7 +20,7 @@ Get Directory Tree Size Using Powershell (Recursive)
     https://thesysadminchannel.com/get-directory-tree-size-using-powershell/
 
 TODO:
-!!! DU behavior differenceses: TODO: Refactor Measure-DiskUsage accordingly
+!!! DU behavior differences: TODO: Refactor Measure-DiskUsage accordingly
   1) DU with no arguments:
      Outputs 1-Line for each recursed directory, which includes size of all
      files in that directory + all the files in its subdirectories.
@@ -53,14 +53,14 @@ Scale the reported Size; e.g.'-BM' prints Size in Megabytes
 TODO: Refactor Show-DiskUsage according
 
 -Time
-Include colums with LastWriteTime, i.e. The time of the last modification of any 
+Include column with LastWriteTime, i.e. The time of the last modification of any 
 file in the directory, or any of its subdirectories (based on -SeparateDirs)
 
 -Force 
 Gets items that otherwise can't be accessed by the user, such as hidden or system files. 
 The Force parameter doesn't override security restrictions
 
--Decide on how to handle Symbolic-Links & Junktions for Dir's & files.
+-Decide on how to handle Symbolic-Links & Junctions for Dir's & files.
 Current thinking: Ignore all symlinks because we are trying to gage actual disk usage
 TODO: Make sure to check the linkType if needed
 
