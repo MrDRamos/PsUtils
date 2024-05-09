@@ -117,4 +117,3 @@ function ConvertTo-Icon
 }
 
 ConvertTo-Icon @PSBoundParameters
-/select
