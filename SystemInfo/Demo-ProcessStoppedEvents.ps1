@@ -75,13 +75,13 @@ function Enable-ProcessStoppedEvents
             $e = $Event.SourceEventArgs.NewEvent
             Write-Host ("{0} Pid:{1} ExitCode:{2} stopped at: {3}" -f $e.ProcessName, $e.ProcessID, $e.ExitStatus, $Event.TimeGenerated)
         }
-        Register-CimIndicationEvent -ClassName Win32_ProcessStopTrace -SourceIdentifier "ProcessStopTrace" `
+        Register-CimIndicationEvent -ClassName Win32_ProcessStopTrace -SourceIdentifier 'ProcessStopTrace' `
                                     -MaxTriggerCount $MaxEvents -Action $ActionBlock | Out-Null
     }
     else 
     {
         $Query = "Select * From __InstanceDeletionEvent within 1 Where TargetInstance ISA 'Win32_Process' and TargetInstance.name like '$ProcessName%'"
-        Register-CimIndicationEvent -Query $Query -SourceIdentifier "ProcessStopTrace" -MaxTriggerCount $MaxEvents  -Action {
+        Register-CimIndicationEvent -Query $Query -SourceIdentifier 'ProcessStopTrace' -MaxTriggerCount $MaxEvents  -Action {
             $Global:DbgEvent = $Event
             if ($G_EventWaitHandle)
             {
