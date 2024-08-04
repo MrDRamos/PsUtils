@@ -19,6 +19,9 @@ https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/
 PowerShell Event Examples:
 https://learn-powershell.net/2013/02/08/powershell-and-events-object-events/
 
+# PowerShell and Events: Engine Events
+https://learn-powershell.net/2013/01/30/powershell-and-events-engine-events/
+
 # System.Timers.Timer Class: 
 https://docs.microsoft.com/en-us/dotnet/api/system.timers.timer?view=net-6.0
 #>
@@ -174,7 +177,7 @@ $WatchDogTimer = New-Object System.Timers.Timer -Property @{
         {
             Write-Host "$DoneMsg -> Posting Custom-Done-Event" -ForegroundColor Green
             $MsgData = @{EventCount = $L_Hash.EventCount; TimeGenerated = $Event.TimeGenerated }
-                New-Event -SourceIdentifier $L_Hash.WatchDogDoneEventId -Sender "WatchdogTimer.EventHandler" -MessageData $MsgData #-EventArguments
+            New-Event -SourceIdentifier $L_Hash.WatchDogDoneEventId -Sender "WatchdogTimer.EventHandler" -MessageData $MsgData #-EventArguments
         }
     }
     elseif ($L_Hash.WatchDogDoneFlag)
