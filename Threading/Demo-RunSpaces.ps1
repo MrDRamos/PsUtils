@@ -29,7 +29,7 @@ function Start-BackgroundJob
         $AddScript | Format-List | Out-String | Write-Verbose
         if ($ArgumentS)
         {
-            $AddScript.AddParameters($ArgumentS)
+            [void]$AddScript.AddParameters($ArgumentS)
         }    
     }
 
