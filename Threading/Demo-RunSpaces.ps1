@@ -6,9 +6,8 @@ function Start-BackgroundJob
 {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
-        [ValidateNotNull()]
-        [scriptblock] $ScriptBlock,
+        [Parameter()]
+        [scriptblock] $ScriptBlock = $null,
 
         [Parameter()]
         [hashtable] $ArgumentS = $null
@@ -23,12 +22,15 @@ function Start-BackgroundJob
     $PowerShell.Runspace = $Runspace
     $Runspace.Open()
 
-    Write-Verbose "Adding Script"
-    $AddScript = $PowerShell.AddScript($ScriptBlock)
-    $AddScript | Format-List | Out-String | Write-Verbose
-    if ($ArgumentS)
+    if ($ScriptBlock)
     {
-        $AddScript.AddParameters($ArgumentS)
+        Write-Verbose "Adding Script"
+        $AddScript = $PowerShell.AddScript($ScriptBlock)
+        $AddScript | Format-List | Out-String | Write-Verbose
+        if ($ArgumentS)
+        {
+            $AddScript.AddParameters($ArgumentS)
+        }    
     }
 
     Write-Verbose "Starting Runspace: $($Runspace.Name)"
@@ -45,26 +47,14 @@ function Remove-BackgroundJob
 {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
-        [ValidateNotNull()]
-        [Object] $Job
+        [Parameter()]
+        [Object] $Job = $null
     )
 
-    $Job.PowerShell.Dispose()
-}
-
-
-function Receive-BackgroundJob
-{
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)]
-        [ValidateNotNull()]
-        [Object] $Job
-    )
-
-    $JobResult = $Job.PowerShell.EndInvoke($Job.AsyncResult)
-    return $JobResult
+    if ($Job)
+    {
+        $Job.PowerShell.Dispose()
+    }
 }
 
 
@@ -72,40 +62,57 @@ function Wait-BackgroundJob
 {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
-        [ValidateNotNull()]
-        [Object] $Job,
+        [Parameter()]
+        [Object] $Job = $null,
 
         [Parameter()]
-        [Int] $Timeout = -1,
+        [Alias('Timeout')]
+        [Int] $TimeoutSec = -1,
 
         [Parameter()]
         [Int] $SleepMSec = 1000
     )
 
-    if ($Timeout -ge 0)
+    if ($Job)
     {
-        $EndTime = (Get-Date).Add($Timeout)
-        while (!$Job.AsyncResult.IsCompleted) 
+        if ($TimeoutSec -ge 0)
         {
-            Start-Sleep -Seconds $SleepMSec
-            if ((Get-Date) -ge $EndTime )
+            $EndTime = (Get-Date).Add($TimeoutSec)
+            while (!$Job.AsyncResult.IsCompleted) 
             {
-                $Job = $null
-                break
-            }
-        }    
-    }
-    else 
-    {
-        while (!$Job.AsyncResult.IsCompleted) 
+                Start-Sleep -Seconds $SleepMSec
+                if ((Get-Date) -ge $EndTime )
+                {
+                    $Job = $null
+                    break
+                }
+            }    
+        }
+        else 
         {
-            Start-Sleep -Milliseconds $SleepMSec
+            while (!$Job.AsyncResult.IsCompleted) 
+            {
+                Start-Sleep -Milliseconds $SleepMSec
+            }    
         }    
     }
     return $Job
 }
 
+
+function Receive-BackgroundJob
+{
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [Object] $Job = $null
+    )
+
+    if ($Job)
+    {
+        $JobResult = $Job.PowerShell.EndInvoke($Job.AsyncResult)
+        return $JobResult
+    }
 }
 
 
@@ -127,3 +134,4 @@ $BackgroundJob = Start-BackgroundJob -ScriptBlock $ScriptBlock -Arguments $Argum
 Wait-BackgroundJob -Job $BackgroundJob | Out-Null
 $JobResult = Receive-BackgroundJob -Job $BackgroundJob
 $JobResult | Write-Host
+Remove-BackgroundJob -Job $BackgroundJob

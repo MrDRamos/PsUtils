@@ -70,7 +70,7 @@ function Enable-FileSystemWatcherEvents
         Write-Host ("File Changed: {0} on {1}" -f $event.SourceEventArgs.Name, (Split-Path $event.SourceEventArgs.FullPath))
         if ($Global:G_EventWaitHandle)
         {
-            $Global:G_EventWaitHandle.Set()
+            [void]$Global:G_EventWaitHandle.Set()
         }
     } | Out-Null
     
@@ -79,7 +79,7 @@ function Enable-FileSystemWatcherEvents
         Write-Host ("File Created: {0} on {1}" -f $event.SourceEventArgs.Name, (Split-Path $event.SourceEventArgs.FullPath))
         if ($Global:G_EventWaitHandle)
         {
-            $Global:G_EventWaitHandle.Set()
+            [void]$Global:G_EventWaitHandle.Set()
         }
     } | Out-Null
     
@@ -88,7 +88,7 @@ function Enable-FileSystemWatcherEvents
         Write-Host ("File Deleted: {0} on {1}" -f $event.SourceEventArgs.Name, (Split-Path $event.SourceEventArgs.FullPath))
         if ($Global:G_EventWaitHandle)
         {
-            $Global:G_EventWaitHandle.Set()
+            [void]$Global:G_EventWaitHandle.Set()
         }
     } | Out-Null
     
@@ -98,22 +98,27 @@ function Enable-FileSystemWatcherEvents
     } | Out-Null
 }
     
-$Path = 'C:\temp'
+$Path = "$($pwd | Split-Path -Qualifier)\temp"
 $FileChangedEvent = New-Object System.Threading.AutoResetEvent -ArgumentList $false #Set the initial state to non-signaled
 Enable-FileSystemWatcherEvents -Path $Path -IncludeSubdirectories -EventWaitHandle $FileChangedEvent
 
 Write-Host "To generate FileSystemWatcher events: In another console Create, Edit or Delete files in: $Path"
 # Note: No out is observed during call to ReadKey because this thread will blocking the Event-Actions
-Write-Host "The events-handler output will show, once you press any key in this console... " -NoNewline
+Write-Host "The events-handler output will show, once you press any key in this console... " #-NoNewline
 [void][System.Console]::ReadKey($true)
-Write-Host                  # Yield to other background tasks that have been queued for execution on this thread
-#Start-Sleep -Seconds 0     # Yield to other background tasks that have been queued for execution on this thread
+#Write-Host                 # Yield to other background tasks that have been queued for execution on this thread
+Start-Sleep -Seconds 0      # Yield to other background tasks that have been queued for execution on this thread
 
 [int]$index = [System.Threading.WaitHandle]::WaitAny($FileChangedEvent, 0)#, $true) 
 if ($index -eq 0)
 {
     Write-Host "The FileChangedEvent event was raised" -ForegroundColor Green
     Write-Host "The last event was for: $($Global:DbgEvent.SourceArgs.FullPath)"
+
+    # Debounce burst of several file events into a single action
+    Start-Sleep -Seconds 1
+    [void]$FileChangedEvent.Reset()
+    # ... Action to handle the event ...
 }
 elseif ($index -eq [System.Threading.WaitHandle]::WaitTimeout)
 {

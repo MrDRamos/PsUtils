@@ -28,12 +28,14 @@ function Wait-ProcessRunning
     param (
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
+        [Alias('Name')]
         [string] $ProcessName,
 
         [Parameter()]
         [string] $UserName = $null,
 
         [Parameter()]
+        [Alias('Timeout')]
         [int] $TimeoutSec = -1,
 
         [Parameter()]
