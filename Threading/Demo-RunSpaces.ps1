@@ -41,6 +41,33 @@ function Start-BackgroundJob
 }
 
 
+function Remove-BackgroundJob
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [ValidateNotNull()]
+        [Object] $Job
+    )
+
+    $Job.PowerShell.Dispose()
+}
+
+
+function Receive-BackgroundJob
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [ValidateNotNull()]
+        [Object] $Job
+    )
+
+    $JobResult = $Job.PowerShell.EndInvoke($Job.AsyncResult)
+    return $JobResult
+}
+
+
 function Wait-BackgroundJob
 {
     [CmdletBinding()]
@@ -79,17 +106,6 @@ function Wait-BackgroundJob
     return $Job
 }
 
-function Receive-BackgroundJob
-{
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)]
-        [ValidateNotNull()]
-        [Object] $Job
-    )
-
-    $JobResult = $Job.PowerShell.EndInvoke($Job.AsyncResult)
-    return $JobResult
 }
 
 
