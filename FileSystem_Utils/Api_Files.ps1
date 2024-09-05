@@ -59,7 +59,7 @@ function Select-Directory
     [array]$SubDirS = @($RootDir)
     if ($MaxDepth -ge 1)
     {
-        $SubDirS += Get-ChildItem -Path $Path -Directory -Depth ($MaxDepth-1) -Force -ErrorAction Ignore
+        $SubDirS += Get-ChildItem -Path $Path -Directory -Depth ($MaxDepth-1) -Force -ErrorAction SilentlyContinue
     }
 
     if ($MinDepth -ge 1)
@@ -67,7 +67,7 @@ function Select-Directory
         [array]$MinDirS = @($RootDir)
         if ($MinDepth -ge 2)
         {
-            $MinDirS += Get-ChildItem -Path $Path -Directory -Depth ($MinDepth -2) -Force -ErrorAction Ignore
+            $MinDirS += Get-ChildItem -Path $Path -Directory -Depth ($MinDepth -2) -Force -ErrorAction SilentlyContinue
         }    
         $MinDirNameS = $MinDirS.FullName
         [array]$SubDirS = [array]$SubDirS | Where-Object { $MinDirNameS -NotContains $_.FullName }
@@ -165,21 +165,24 @@ function Select-File
     )
 
     [array]$FileS = $null
-    $DirS = Select-Directory -Path $Path -MinDepth $MinDepth -MaxDepth $MaxDepth -IncludeDir $IncludeDir -ExcludeDir $ExcludeDir
-    $DirSpecS = $DirS | ForEach-Object { "$($_.FullName)\*" }
-    if ($DirSpecS)
+    [array]$DirS = Select-Directory -Path $Path -MinDepth $MinDepth -MaxDepth $MaxDepth -IncludeDir $IncludeDir -ExcludeDir $ExcludeDir
+    if ($DirS)
     {
-        [array]$FileS = Get-ChildItem -Path $DirSpecS -File -Include $Include -Exclude $Exclude -Force -ErrorAction Ignore
+        $DirSpecS = $DirS | ForEach-Object { "$($_.FullName)\*" }
+        if ($DirSpecS)
+        {
+            [array]$FileS = Get-ChildItem -Path $DirSpecS -File -Include $Include -Exclude $Exclude -Force -ErrorAction SilentlyContinue
 
-        if ($MinLastWriteTime.Ticks)
-        {
-            [array]$FileS = $FileS | Where-Object { $_.LastWriteTime -ge $MinLastWriteTime }
+            if ($MinLastWriteTime.Ticks -and $FileS)
+            {
+                [array]$FileS = $FileS | Where-Object { $_.LastWriteTime -ge $MinLastWriteTime }
+            }
+        
+            if ($MaxLastWriteTime.Ticks -and $FileS)
+            {
+                [array]$FileS = $FileS | Where-Object { $_.LastWriteTime -le $MaxLastWriteTime }
+            }    
         }
-    
-        if ($MaxLastWriteTime.Ticks)
-        {
-            [array]$FileS = $FileS | Where-Object { $_.LastWriteTime -le $MaxLastWriteTime }
-        }    
     }
 
     return $FileS
