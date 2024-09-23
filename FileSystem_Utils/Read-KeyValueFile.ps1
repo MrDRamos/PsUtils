@@ -66,10 +66,15 @@ function Read-KeyValueFile
                     {
                         $Key = $Line.Substring(0, $idx).TrimEnd()
                         $Value = $Line.Substring($idx + 1).TrimStart()
-                        if ($Value.StartsWith('@"') -or $Value.StartsWith("@'"))
+                        if ($Value.StartsWith('@"'))
                         {
                             $MultiLineKey = $key
-                            $MultiLineDelim = $Value[1] + '@'
+                            $MultiLineDelim = '"@'
+                        }
+                        elseif ($Value.StartsWith("@'"))
+                        {
+                            $MultiLineKey = $key
+                            $MultiLineDelim = "'@"
                         }
                         else 
                         {
