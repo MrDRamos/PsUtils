@@ -8,7 +8,7 @@ Features:
 - Leading and trailing white spaces around a value are automatically removed
 - Use singled or double quoted values if leading or trailing whitespace characters must be preserved.
 - The quotes around a value are removed. Use two quotes if the a values must include quotes
-- All text following a # character is removed except if the value is quoted
+- All text following the '\s#' characters are removed except if the value is quoted
 
 Multiline-Values:
 - Multiline-Values use the PowersShell Here-String convention.
@@ -43,26 +43,26 @@ function Read-KeyValueFile
         foreach ($Line in $AllLineS) 
         {
             $LineNo++
-            if (![string]::IsNullOrWhiteSpace($Line))
+            if ($MultiLineKey)
             {
-                if ($MultiLineKey)
+                if ($Line.StartsWith($MultiLineDelim))
                 {
-                    if ($Line.StartsWith($MultiLineDelim))
-                    {
-                        $IemVarS[$MultiLineKey] = $MultiLineValue -join "`n"
-                        $MultiLineKey = $null
-                        $MultiLineValue = $null
-                    }
-                    else 
-                    {
-                        $MultiLineValue += $Line
-                    }                
+                    $IemVarS[$MultiLineKey] = $MultiLineValue -join "`n"
+                    $MultiLineKey = $null
+                    $MultiLineValue = $null
                 }
                 else 
                 {
+                    $MultiLineValue += $Line
+                }                
+            }
+            else
+            {
+                if (![string]::IsNullOrWhiteSpace($Line))
+                {
                     $Line = $Line.Trim()
                     [int]$idx = $Line.IndexOf('=')
-                    if ($idx -ge 1)
+                    if ($idx -ge 1 -and $Line[0] -ne '#')
                     {
                         $Key = $Line.Substring(0, $idx).TrimEnd()
                         $Value = $Line.Substring($idx + 1).TrimStart()
@@ -80,15 +80,15 @@ function Read-KeyValueFile
                         {
                             if ($Value)
                             {
-                                $idx = $Value.IndexOf('#')
-                                if ($idx -ge 0)
+                                if ($Value -match '(.*)\s#')
                                 {
                                     if (!$Value.EndsWith('"') -and !$Value.EndsWith("'"))
                                     {
-                                        $Value = $Value.Substring(0, $idx).TrimEnd()
+                                        $Value = $Matches[1].TrimEnd()
                                     }
                                 }
 
+                                # Remove quotes from value
                                 if ($Value.Length -gt 1)
                                 {
                                     if ($Value[0] -eq '"' -and $Value[$Value.Length - 1] -eq '"')
@@ -109,7 +109,7 @@ function Read-KeyValueFile
                     {
                         if (!$Line.StartsWith('#'))
                         {
-                            Write-Warning "Invalid Key = Value format in line: $LineNo"
+                            Write-Warning "Invalid Key = Value format in line($LineNo): $Line"
                         }
                     }
                 }
@@ -151,15 +151,20 @@ Str32 = "abc32" # comment
 Str33 = "abc33" # comment"
 Str34 = abc34" # comment"
 Str35 = abc35 # comment #more comment
+Str36 = abc36# Not a comment #comment
+#Str37 = abc37 MUST not be included!!
+ #Str38 = abc38 MUST not be included!!
 
 Str40 = @'       
 Hello
   '@ 40
+
     World  
 '@
 Str41 = @"       
 Hello
   "@ 41
+
     World  
 `"@
 Str50 = 50
