@@ -1,7 +1,14 @@
 
 
 <#
+.SYNOPSIS
 Returns the IpAddress's associated with the installed physical & or logical Network Adapters
+
+.NOTES
+Commands to get public facing IP address:
+    ipify:   Invoke-Restmethod -method get -uri http://api.ipify.org
+    myip:    Invoke-Restmethod -method get -uri https://api.myip.com
+    opendns: nslookup myip.opendns.com resolver1.opendns.com
 #>
 [CmdletBinding()]
 param (
@@ -18,14 +25,14 @@ $IpAddrS = $AdapterS | Get-NetIPAddress -AddressFamily $AddressFamily -ErrorActi
 $AdapterIpS = foreach ($IpAddr in ($IpAddrS | Sort-Object PrefixOrigin,IPAddress)) {
     $Adapter = $AdapterS | Where-Object { $_.ifIndex -eq $IpAddr.ifIndex }
     [PSCustomObject]@{
-        IPAddress = $IpAddr.IPAddress
+        IPAddress = $IpAddr.IPAddress + '/' + $IpAddr.PrefixLength
         PrefixOrigin = $IpAddr.PrefixOrigin
-        #PrefixLength = $IpAddr.PrefixLength
-        AdapterName = $Adapter.Name
+        #LifeTime = $IpAddr.ValidLifetime
+        #AdapterName = $Adapter.Name #$IpAddr.InterfaceAlias
         InterfaceDescription = $Adapter.InterfaceDescription
+        Status = $Adapter.Status #MediaConnectionState #InterfaceOperationalStatus
         LinkSpeed = $Adapter.LinkSpeed
         MacAddress = $Adapter.MacAddress
-        Status = $Adapter.MediaConnectionState #InterfaceOperationalStatus
         InterfaceIndex = $Adapter.InterfaceIndex
     } | Write-Output
 }
