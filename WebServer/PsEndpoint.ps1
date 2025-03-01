@@ -270,7 +270,7 @@ function Get-Usage
     }
     else
     {
-    $ReplyText = @"
+        $ReplyText = @"
 $Script:AppName WebServer examples:
 Base Uri = http://$ENV:Computername/$LocalUrlPath/
 
@@ -282,7 +282,7 @@ Post Data: irm -Method Put  -Uri "http://$ENV:Computername/$LocalUrlPath/" -Body
 Terminate: irm -Method Post -Uri "http://$ENV:Computername/$LocalUrlPath/exit"       
 "@
     }
-    
+
     return @($ReplyText, 200)
 }
 
