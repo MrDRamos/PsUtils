@@ -236,7 +236,7 @@ function Get-RequestBody
 
     if ($Request.ContentType -match "json") # -ContentType "application/json"
     {
-        $Body = $RequestBody | ConvertFrom-Json -Depth 99
+        $Body = $RequestBody | ConvertFrom-Json
     }
     elseif ($Request.ContentType -match "x-www-form-urlencoded")
     {
