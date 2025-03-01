@@ -48,6 +48,7 @@ function Write-Log
 }
 
 
+
 <#
 .SYNOPSIS
 Retrieve firewall rules associated with port 80
@@ -59,7 +60,7 @@ function Get-FirewallPortRules([int] $Port = 80, [switch] $IncludeSystemApps)
     if (!$IncludeSystemApps)
     {
         $PortRuleS = $PortRuleS | Where-Object { Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $_ | 
-            Where-Object -Property Program -EQ 'Any' }
+                                  Where-Object -Property Program -EQ 'Any' }
     }
     return $PortRuleS
 }
@@ -194,7 +195,7 @@ function Get-RequestBody([System.Net.HttpListenerRequest] $Request)
 
     if ($Request.ContentType -match "json") # -ContentType "application/json"
     {
-        $Body = $RequestBody | ConvertFrom-Json
+        $Body = $RequestBody | ConvertFrom-Json -Depth 99
     }
     elseif ($Request.ContentType -match "x-www-form-urlencoded")
     {
@@ -212,6 +213,80 @@ function Get-RequestBody([System.Net.HttpListenerRequest] $Request)
 
 #endregion Helper functions
 
+#region Handlers
+
+function Get-Usage
+{
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [Object] $QueryParamS
+    )
+
+    if ($QueryParamS.Count)
+    {
+        $ReplyText = "Query Parameters:", ($QueryParamS | Format-Table | Out-String).TrimEnd()
+    }
+    else
+    {
+    $ReplyText = @"
+$Script:AppName WebServer examples:
+localhost    = $ENV:Computername
+LocalUrlPath = $LocalUrlPath
+
+Get Help:  irm -Method Get  -Uri "http://localhost/$LocalUrlPath"
+Get ?Str:  irm -Method Get  -Uri "http://localhost/$LocalUrlPath/?Country=USA&City=Boston&City=NewYork&Zipcode=11790"
+Get Dir:   irm -Method Get  -Uri "http://localhost/$LocalUrlPath/dir"
+Get Dir:   irm -Method Get  -Uri "http://localhost/$LocalUrlPath/dir?*.ps1"
+Post Data: irm -Method Put  -Uri "http://localhost/$LocalUrlPath/" -Body '{ "key1": "val1", "key2": "val2" }' -ContentType "application/json"
+Terminate: irm -Method Post -Uri "http://localhost/$LocalUrlPath/exit"       
+"@
+    }
+    
+    return @($ReplyText, 200)
+}
+
+
+function Get-FileList
+{
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [Object] $QueryParamS
+    )
+
+    $ReplyText = ''
+    try 
+    {
+        $ErrorActionCtx = "retrieve $($QueryParamS.Values) files"
+        if ($QueryParamS.Count)
+        {
+            $FileS = Get-Item -Path $QueryParamS.Values
+        }
+        else 
+        {
+            $FileS = Get-Item -Path *
+        }
+        $ReplyText = $FileS | Format-Table | Out-String
+        #$ReplyText = $FileS | ConvertTo-Json
+        #$ReplyText = $FileS | ConvertTo-Html -Property Mode, LastWriteTime, Length, Name
+        
+        Write-Log "Retrieved $($FileS.Count) files"
+    }
+    catch 
+    {
+        $ErrorMsg = "Failed to ${ErrorActionCtx}: $($_.Exception.Message)"
+        Write-Log $ErrorMsg
+        return @($ErrorMsg, 400)
+    }
+    
+    return @($ReplyText, 200)
+}
+
+#endregion Handlers
+
+
+#region main
 
 <######################################   MAIN  ######################################
  Refernces:
@@ -219,14 +294,6 @@ function Get-RequestBody([System.Net.HttpListenerRequest] $Request)
     https://gist.github.com/Tiberriver256/868226421866ccebd2310f1073dd1a1e
     https://github.com/PowerShell/Polaris
     https://github.com/TLaborde/NodePS
-
-# Example Requests:
-    Get Help:  irm "http://localhost/MyEndpoint/v1"
-    Get Help:  irm "http://localhost/MyEndpoint/v1/?Country=USA&City=Boston&City=NewYork&Zipcode=11790"
-    Get Dir:   irm "http://localhost/MyEndpoint/v1/dir"
-    Get Dir:   irm "http://localhost/MyEndpoint/v1/dir?*.ps1"
-    Post Data: irm "http://localhost/MyEndpoint/v1/"            -Method Put -Body '{ "key1": "val1", "key2": "val2" }'
-    Terminate: irm "http://localhost/MyEndpoint/v1/exit"        -Method Post
 ######################################################################################>
 
 <#
@@ -236,7 +303,7 @@ In this program the <LocalUrlPath> = $AppName/$AppVer
 Note: $AppName, $AppVer and thus $LocalUrlPath may all be empty
 #>
 $AppName = 'MyEndpoint'
-$AppVer = 'v1'
+$AppVer  = 'v1'
 
 # Init $LocalUrlPath
 $LocalUrlPath = $AppName
@@ -246,23 +313,25 @@ if (![string]::IsNullOrWhiteSpace($AppVer))
 }
 $LocalUrlPath = $LocalUrlPath.Trim(' /') # Leave out trailing /
 
-# Set up a Listener. https://docs.microsoft.com/en-us/dotnet/api/system.net.httplistener?view=net-6.0
-$Listener = New-Object System.Net.HttpListener
-Set-EndpointPrefix -Listener $Listener -EndpointName $LocalUrlPath
-$ListenUrl = $Listener.Prefixes -join ', '
-
-Set-AuthenticationSchema -Listener $Listener -SchemeS 'Anonymous'
-$Listener.Start()
-Write-Log "$AppName listening on: $ListenUrl"
-
 $ErrorMsgByErrorNo = @{
     400 = '<h1>400 - Bad Request<h1>'
     404 = '<h1>404 - Page not found</h1>'
     500 = '<h1>500 - Internal Server Error</h1>'
 }
 
+$Listener = $null
 try 
 {
+    # Set up a Listener. https://docs.microsoft.com/en-us/dotnet/api/system.net.httplistener?view=net-6.0
+    $Listener = New-Object System.Net.HttpListener
+
+    Set-EndpointPrefix -Listener $Listener -EndpointName $LocalUrlPath
+    $ListenUrl = $Listener.Prefixes -join ', '
+
+    Set-AuthenticationSchema -Listener $Listener -SchemeS 'Anonymous'
+    $Listener.Start()
+    Write-Log "$AppName listening on: $ListenUrl"
+
     $ExitApp = $False
     while ($Listener.IsListening)
     {
@@ -307,7 +376,7 @@ try
             $QryStr = $Request.QueryString  # Map DotNet Specialized.NameValueCollection -> [hashtable]
             foreach ($Key in $QryStr.AllKeys) 
             {
-                $Value = $QryStr.Get($Key)
+                $Value = $QryStr.GetValues($Key)
                 if ($null -eq $Key)
                 {
                     $Key = ''
@@ -331,21 +400,11 @@ try
                 {
                     if ($EndPoint -eq "/")
                     {
-                        $ReplyText = "$AppName Usage: ...TBD..."
+                        $ReplyText, $ReturnCode = Get-Usage -QueryParamS $QueryParamS
                     }
                     elseif ($EndPoint -eq "/Dir")
                     {
-                        if ($QueryParamS.Count)
-                        {
-                            $FileS = Get-Item -Path $QueryParamS.Values | Get-Item                        
-                        }
-                        else 
-                        {
-                            $FileS = Get-Item -Path *
-                        }
-                        $ReplyText = $FileS | Format-Table | Out-String
-                        #$ReplyText = $FileS | ConvertTo-Json
-                        #$ReplyText = $FileS | ConvertTo-Html -Property Mode, LastWriteTime, Length, Name
+                        $ReplyText, $ReturnCode = Get-FileList -QueryParamS $QueryParamS
                     }
                     else 
                     {
@@ -355,10 +414,10 @@ try
 
                 "PUT"
                 {
+                    # Just echo back the body as a key : value list
                     $Body = Get-RequestBody $Request
-                    "Body:", ($Body | Format-Table | Out-String).TrimEnd() | Write-Log
-                    #TODO $Content = ...
-                    $ReplyText = $Body
+                    $ReplyText = "Body:", ($Body | Format-List | Out-String).TrimEnd()
+                    Write-Log $ReplyText
                 }
 
                 "POST"
@@ -395,13 +454,13 @@ try
             }
             if ($ReplyText)
             {
-                $ReplyText = $ErrorMsg + '<p>' + $ReplyText + '</p>'
+                $ReplyText = $ErrorMsg +"`n<p>" +$ReplyText +'</p>'
             }
             else 
             {
                 $ReplyText = $ErrorMsg
             }
-            Write-Log "Response: $($Response.StatusCode)`n$ReplyText" -Level Error
+            Write-Log "Response: $($Response.StatusCode)`n$ReplyText" -Level 'Error'
         }
         else 
         {
@@ -422,8 +481,14 @@ try
 }
 catch 
 {
-    Write-Log $_.Exception.Message
+    Write-Log $_.Exception.Message -Level 'Error'
 }
 
-$Listener.Dispose()
-Write-Log "$AppName Stopped"
+if ($Listener)
+{
+    $Listener.Dispose()
+}
+Write-Log "Exiting $AppName" -ForegroundColor Cyan
+Exit 0
+
+#endregion main
