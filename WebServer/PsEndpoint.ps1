@@ -1,25 +1,102 @@
 
-# https://4sysops.com/archives/building-a-web-server-with-powershell/
-# https://gist.github.com/Tiberriver256/868226421866ccebd2310f1073dd1a1e
-# https://github.com/PowerShell/Polaris
-# https://github.com/TLaborde/NodePS
+#region Helper functions
 
-$AppName = "PsEndpoint"
-$PrefixeS = @("http://localhost:8080/")
-#$PrefixeS = @("http://+:8080/test/")
-#$PrefixeS = @("http://$($env:COMPUTERNAME):8080/")
-# https endpoint: https://stackoverflow.com/questions/11403333/httplistener-with-https-support/11457719#11457719
+function Write-Log
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline)]
+        [array] $Message,
 
+        [Parameter()]
+        [string] $Level = 'Info',
+
+
+        [Parameter()]
+        [string] $ForegroundColor = 'Gray'
+    )
+
+    # $Input is an automatic variable that references the pipeline value
+    if ($Input)
+    {
+        $InputMsg = $Input -join "`n"
+    }
+    else 
+    {
+        $InputMsg = $Message -join "`n"
+    }
+
+    $LogStr = ''
+    if ($Script:G_LogNoNewLine)
+    {
+        $LogStr = "`n"    
+    }
+    $LogStr += '[' + (Get-Date).ToString('yyyy-MM-dd][HH:mm:ss.fffzz') + '][' + $ENV:COMPUTERNAME + '][WebService][' + $Pid + '][' + $Level + ']  ' + $InputMsg
+
+    if ($Level -eq 'Error')
+    {
+        Write-Host $LogStr -ForegroundColor Red
+    }
+    elseif ($Level -eq 'Warning')
+    {
+        Write-Host $LogStr -ForegroundColor Yellow
+    }
+    else 
+    {
+        Write-Host $LogStr -ForegroundColor $ForegroundColor
+    }
+}
+
+
+<#
+.SYNOPSIS
+Retrieve firewall rules associated with port 80
+#>
+function Get-FirewallPortRules([int] $Port = 80, [switch] $IncludeSystemApps)
+{
+    $PortFilterS = Get-NetFirewallPortFilter -Protocol TCP | Where-Object -Property LocalPort -EQ $Port
+    $PortRuleS = $PortFilterS | Get-NetFirewallRule
+    if (!$IncludeSystemApps)
+    {
+        $PortRuleS = $PortRuleS | Where-Object { Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $_ | 
+            Where-Object -Property Program -EQ 'Any' }
+    }
+    return $PortRuleS
+}
+
+<#
+#>
+function Enable-FirewallWebServiceRule([int] $Port = 80, [string] $Name = 'Allow Web-Service on port 80', [array] $Profile = @('Private', 'Domain'))
+{
+    [array]$PortRuleS = Get-FirewallPortRules -Port $Port
+    if ($PortRuleS)
+    {
+        Enable-NetFirewallRule -InputObject $PortRuleS[0]
+    }
+    else 
+    {
+        $null = New-NetFirewallRule -DisplayName $Name -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow -Profile $Profile
+    }
+}
+<# Unit test
+Enable-FirewallWebServiceRule
+exit
+#>
+
+
+<#
+In this sample code we simply return a message stating what authentication method was applied
+#>
 function Get-ClientAuthenticationMessage([System.Net.HttpListenerContext] $Context)
 {
     [System.Security.Principal.IPrincipal] $User = $Context.User;
-    [System.Security.Principal.IIdentity] $Id = $User.Identity;
-    if (!$id)
+    if (!$User -or !$User.Identity)
     {
         return "Client authentication is not enabled for this Web server.";
     }
 
     $Retval = ""
+    [System.Security.Principal.IIdentity] $Id = $User.Identity;
     if ($Id.IsAuthenticated)
     {
         $Retval = "$($Id.Name) was authenticated using $($Id.AuthenticationType)"
@@ -34,6 +111,81 @@ function Get-ClientAuthenticationMessage([System.Net.HttpListenerContext] $Conte
     }
     return $Retval
 }
+
+
+<#
+.SYNOPSIS
+Configure how the listener authenticates incomming requests.
+
+.PARAMETER SchemeS
+One or more [System.Net.AuthenticationSchemes] 
+[enum]::GetNames([System.Net.AuthenticationSchemes])
+    None
+    Digest
+    Negotiate
+    Ntlm
+    IntegratedWindowsAuthentication
+    Basic
+    Anonymous
+
+-Anonymous
+    No Athentication i.e. The endpoint will accept any client connection
+    The endpoint call needs no credentials
+
+-Basic
+    Use Basic Authentication: Username:Password
+    Example CallL
+        $UserName = "LetMeIn"; $Password = "TopSecret"
+
+        $BasicAuthB64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($UserName):$($Password)"))
+        $Header = @{ Authorization = "Basic $BasicAuthB64" }
+        Invoke-RestMethod -Uri "http://${HostName}/" -header $Header
+            or
+        Cred = [pscredential]::new($UserName, (ConvertTo-SecureString $Password -AsPlainText -Force))  
+        Invoke-RestMethod -Uri "http://${HostName}/" -Credential $Cred -AllowUnencryptedAuthentication
+
+-IntegratedWindowsAuthentication
+    For Intranet environment only: Use Kerberos or NTLM to authenticated user
+    Invoke-RestMethod -Uri "http://${HostName}/" -UseDefaultCredentials -AllowUnencryptedAuthentication
+#>
+function Set-AuthenticationSchema([System.Net.HttpListener] $Listener, [System.Net.AuthenticationSchemes[]] $SchemeS = '-Anonymous')
+{
+    if ($SchemeS)
+    {
+        $Listener.AuthenticationSchemes = $SchemeS
+    }
+}
+
+
+<#
+.SYNOPSIS
+$PrefixeS = @("http://localhost:80/")              # -> irm "http://localhost/"
+$PrefixeS = @("http://localhost:8080/")            # -> irm "http://localhost:8080/"
+$PrefixeS = @("http://$($env:COMPUTERNAME):8080/") # -> irm "http://<ComputerName>:8080/"
+#PrefixeS = @("http://$($env:COMPUTERNAME):80/")    # Port 80 requires app to run as Administrator
+#PrefixeS = @("http://+:80/")                       # use localhost | ipaddress | computername
+$PrefixeS = @("http://+:8080/test/")               # -> irm "http://localhost:8080/test"
+
+.NOTES
+Remote computers will not be able to access the service unless a firewall rule to enable incomming access to the port is created.
+New-NetFirewallRule -DisplayName "Allow Port 80" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow -Profile @('Private', 'Domain')
+
+.LINK
+HTTPS support: https://stackoverflow.com/questions/11403333/httplistener-with-https-support/11457719#11457719
+#>
+function Set-EndpointPrefix([System.Net.HttpListener] $Listener, [string[]]$PrefixeS = "http://+:80/", [string] $EndpointName)
+{
+    foreach ($Prefix in $PrefixeS) 
+    {        
+        $FullPrefix = $Prefix.TrimEnd('/') + '/'
+        if ($EndpointName)
+        {
+            $FullPrefix = $FullPrefix + $EndpointName.TrimEnd('/') + '/'
+        }        
+        $Listener.Prefixes.Add($FullPrefix)
+    }
+}
+
 
 function Get-RequestBody([System.Net.HttpListenerRequest] $Request)
 {
@@ -55,33 +207,59 @@ function Get-RequestBody([System.Net.HttpListenerRequest] $Request)
             $Body[$Key] = $ValueS
         }
     }
-    "Body:", ($Body | Format-Table | Out-String).TrimEnd() | Write-Verbose -Verbose
     Return $Body
 }
 
+#endregion Helper functions
+
+
+<######################################   MAIN  ######################################
+ Refernces:
+    https://4sysops.com/archives/building-a-web-server-with-powershell/
+    https://gist.github.com/Tiberriver256/868226421866ccebd2310f1073dd1a1e
+    https://github.com/PowerShell/Polaris
+    https://github.com/TLaborde/NodePS
+
+# Example Requests:
+    Get Help:  irm "http://localhost/MyEndpoint/v1"
+    Get Help:  irm "http://localhost/MyEndpoint/v1/?Country=USA&City=Boston&City=NewYork&Zipcode=11790"
+    Get Dir:   irm "http://localhost/MyEndpoint/v1/dir"
+    Get Dir:   irm "http://localhost/MyEndpoint/v1/dir?*.ps1"
+    Post Data: irm "http://localhost/MyEndpoint/v1/"            -Method Put -Body '{ "key1": "val1", "key2": "val2" }'
+    Terminate: irm "http://localhost/MyEndpoint/v1/exit"        -Method Post
+######################################################################################>
+
+<#
+A request url hase these segments: http://<hostname>/<LocalUrlPath><EndPoint><?QuerySting>
+The listener will not process a request unless the url has these segments: http://<hostname>/<LocalUrlPath>
+In this program the <LocalUrlPath> = $AppName/$AppVer
+Note: $AppName, $AppVer and thus $LocalUrlPath may all be empty
+#>
+$AppName = 'MyEndpoint'
+$AppVer = 'v1'
+
+# Init $LocalUrlPath
+$LocalUrlPath = $AppName
+if (![string]::IsNullOrWhiteSpace($AppVer))
+{
+    $LocalUrlPath = "$AppName/$AppVer"
+}
+$LocalUrlPath = $LocalUrlPath.Trim(' /') # Leave out trailing /
 
 # Set up a Listener. https://docs.microsoft.com/en-us/dotnet/api/system.net.httplistener?view=net-6.0
 $Listener = New-Object System.Net.HttpListener
-$Prefixes | ForEach-Object { $Listener.Prefixes.Add($_) }
+Set-EndpointPrefix -Listener $Listener -EndpointName $LocalUrlPath
+$ListenUrl = $Listener.Prefixes -join ', '
+
+Set-AuthenticationSchema -Listener $Listener -SchemeS 'Anonymous'
 $Listener.Start()
-Write-Output "$AppName listening on: $PrefixeS"
+Write-Log "$AppName listening on: $ListenUrl"
 
-# 1) Negotiate the authentication scheme to use
-#$Listener.AuthenticationSchemes = [System.Net.AuthenticationSchemes]::Negotiate
-
-<# 2) Use Basic Authentication: Username:Password
-$User = "LetMeIn"; $Password = "TopSecret"
-$BasicAuthB64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($User):$($Password)"))
-$Header = @{ Authorization = "Basic $BasicAuthB64" }
-run: irm "http://localhost:8080/" -header $Header
-or:  irm "http://localhost:8080/" -Credential $Cred -AllowUnencryptedAuthentication
-#>
-#$Listener.AuthenticationSchemes = [System.Net.AuthenticationSchemes]::Basic
-
-<# 3) For Intranet environment only: Use Kerberos or NTLM to authenticated user
-run: irm "http://localhost:8080/" -UseDefaultCredentials -AllowUnencryptedAuthentication
-#>
-#$Listener.AuthenticationSchemes = [System.Net.AuthenticationSchemes]::IntegratedWindowsAuthentication
+$ErrorMsgByErrorNo = @{
+    400 = '<h1>400 - Bad Request<h1>'
+    404 = '<h1>404 - Page not found</h1>'
+    500 = '<h1>500 - Internal Server Error</h1>'
+}
 
 try 
 {
@@ -89,66 +267,145 @@ try
     while ($Listener.IsListening)
     {
         #https://docs.microsoft.com/en-us/dotnet/api/system.net.httplistenercontext?redirectedfrom=MSDN&view=net-6.0
-        Write-Host "Listening ..."
+        Write-Log "Listening ..."
         [System.Net.HttpListenerContext] $Context = $Listener.GetContext()
 
         #... Received a request
         [System.Net.HttpListenerRequest] $Request = $Context.Request
-        $EndPoint = $Request.Url.LocalPath
-        Write-Verbose "Received request: $EndPoint"
-       
-        #Convert the QueryString into powershell [HashTable] of key/value parameters
-        $QueryParamS = @{}       
-        $QryStr = $Request.QueryString  # e.g. $QueryStr = "?Country=USA&City=Boston&City=NewYork&Zipcode=11790"  
-        foreach ($Key in $QryStr)
+        Write-Log "Received $($Request.HttpMethod) request: $($Request.Url.OriginalString)"
+
+        if ($Listener.AuthenticationSchemes -ne 'Anonymous')
         {
-            $ValueS = $QryStr[$Key] -split ","
-            $QueryParamS[$Key] = $ValueS
+            $ClientAuthMsg = Get-ClientAuthenticationMessage -Context $Context
+            Write-Log $ClientAuthMsg
         }
-        "QueryStr:", ($QueryParamS | Format-Table | Out-String).TrimEnd() | Write-Verbose -Verbose
 
-        $ClientAuthMsg = Get-ClientAuthenticationMessage -Context $Context
-        Write-Output $ClientAuthMsg
-
-        $ReplyText = $null
-        switch ($Request.HttpMethod) 
+        # A request url hase these segments: http://<hostname>/<LocalUrlPath><EndPoint><?QuerySting>
+        # Here we extract the optioanl $EndPoint segment. 
+        $EndPoint = $null
+        $LocalRequest = $Request.Url.LocalPath
+        $idx = $LocalRequest.ToLower().IndexOf($LocalUrlPath.ToLower())
+        if ($idx -ge 0)
         {
-            "GET"
+            $idx += $LocalUrlPath.Length
+            if ($idx -lt $LocalRequest.Length)
             {
-                if ($EndPoint -eq "/")
+                $EndPoint = $LocalRequest.Substring($idx)
+            }
+        }
+        if (!$EndPoint) 
+        {
+            $EndPoint = '/' # / Represents empty <EndPoint> url segment
+        }
+       
+        #Init $QueryParamS with key/value pairs found in QueryString
+        # e.g. $QueryStr = "Country=USA&City=Boston&City=NewYork&Zipcode=11790"
+        # => $QueryParamS = @{ Country='USA'; City=@('Boston','NewYork'); Zipcode=11790 }
+        $QueryParamS = @{}
+        if ($Request.QueryString.Count)
+        {
+            $QryStr = $Request.QueryString  # Map DotNet Specialized.NameValueCollection -> [hashtable]
+            foreach ($Key in $QryStr.AllKeys) 
+            {
+                $Value = $QryStr.Get($Key)
+                if ($null -eq $Key)
                 {
-                    $ReplyText = "$AppName Usage: ...TBD..."
+                    $Key = ''
                 }
-                elseif ($EndPoint -eq "/Dir")
-                {
-                    #$ReplyText = Get-Item -Path * | ConvertTo-Json
-                    $ReplyText = Get-Item -Path * | Format-Table | Out-String
-                }
+                $QueryParamS.Add($Key, $Value)
             }
 
-            "PUT"
+            if ($QueryParamS)
             {
-                $Body = Get-RequestBody $Request
-                #TODO $Content = ...
+                "Query Parameters:", ($QueryParamS | Format-Table | Out-String).TrimEnd() | Write-Log
             }
+        }
 
-            "POST"
+        $ReturnCode = 200
+        [string[]] $ReplyText = @()
+        try
+        {
+            switch ($Request.HttpMethod) 
             {
-                $Body = Get-RequestBody $Request
-                if ($EndPoint -eq "/exit")
+                "GET"
                 {
-                    $ReplyText = "`"Stopping $AppName Web Service`""
+                    if ($EndPoint -eq "/")
+                    {
+                        $ReplyText = "$AppName Usage: ...TBD..."
+                    }
+                    elseif ($EndPoint -eq "/Dir")
+                    {
+                        if ($QueryParamS.Count)
+                        {
+                            $FileS = Get-Item -Path $QueryParamS.Values | Get-Item                        
+                        }
+                        else 
+                        {
+                            $FileS = Get-Item -Path *
+                        }
+                        $ReplyText = $FileS | Format-Table | Out-String
+                        #$ReplyText = $FileS | ConvertTo-Json
+                        #$ReplyText = $FileS | ConvertTo-Html -Property Mode, LastWriteTime, Length, Name
+                    }
+                    else 
+                    {
+                        $ReturnCode = 404
+                    }
                 }
-                $ExitApp = $true
-            }
+
+                "PUT"
+                {
+                    $Body = Get-RequestBody $Request
+                    "Body:", ($Body | Format-Table | Out-String).TrimEnd() | Write-Log
+                    #TODO $Content = ...
+                    $ReplyText = $Body
+                }
+
+                "POST"
+                {
+                    $Body = Get-RequestBody $Request
+                    if ($EndPoint -eq "/exit")
+                    {
+                        $ReplyText = "`"Stopping $AppName Web Service`""
+                        $ExitApp = $true
+                    }
+                    else 
+                    {
+                        $ReturnCode = 404
+                    }
+                }
+            }            
+        }
+        catch 
+        {
+            $ReturnCode = 500
+            $ReplyText = $_.Exception.Message
         }
 
         #Response: https://docs.microsoft.com/en-us/dotnet/api/system.net.httpListenercontext.response?view=net-6.0
         [System.Net.HttpListenerResponse] $Response = $Context.Response
-        if ($null -eq $ReplyText)
+        $Response.StatusCode = $ReturnCode
+        if ($ReturnCode -ge 400)
         {
-            $ReplyText = "<h1>404 - Page not found</h1>"
-            $Response.StatusCode = 401
+            $ErrorMsg = switch ($ReturnCode) 
+            {
+                400 { $ErrorMsgByErrorNo[400] }
+                404 { $ErrorMsgByErrorNo[404] }
+                Default { $ErrorMsgByErrorNo[500] }
+            }
+            if ($ReplyText)
+            {
+                $ReplyText = $ErrorMsg + '<p>' + $ReplyText + '</p>'
+            }
+            else 
+            {
+                $ReplyText = $ErrorMsg
+            }
+            Write-Log "Response: $($Response.StatusCode)`n$ReplyText" -Level Error
+        }
+        else 
+        {
+            Write-Log "Response: $($Response.StatusCode)"
         }
 
         $ReplyByteS = [Text.Encoding]::UTF8.GetBytes($ReplyText)
@@ -156,7 +413,6 @@ try
         $Response.OutputStream.Write($ReplyByteS, 0 , $ReplyByteS.Count)
         #$Context.Response.ContentType = [System.Web.MimeMapping]::GetMimeMapping("")
         $Response.Close()
-        Write-Host "Response: $($Response.StatusCode)"
 
         if ($ExitApp)
         {
@@ -166,7 +422,8 @@ try
 }
 catch 
 {
-    Write-Output $_.Exception.Message
+    Write-Log $_.Exception.Message
 }
+
 $Listener.Dispose()
-Write-Output "$AppName Stopped"
+Write-Log "$AppName Stopped"
