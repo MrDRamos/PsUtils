@@ -86,7 +86,7 @@ exit
 
 
 <#
-In this sample code we simply return a message stating what authentication method was applied
+This code example returns the user information for a client request
 #>
 function Get-ClientAuthenticationMessage([System.Net.HttpListenerContext] $Context)
 {
@@ -174,22 +174,63 @@ New-NetFirewallRule -DisplayName "Allow Port 80" -Direction Inbound -Protocol TC
 .LINK
 HTTPS support: https://stackoverflow.com/questions/11403333/httplistener-with-https-support/11457719#11457719
 #>
-function Set-EndpointPrefix([System.Net.HttpListener] $Listener, [string[]]$PrefixeS = "http://+:80/", [string] $EndpointName)
+function Add-LocalUrlPrefix([System.Net.HttpListener] $Listener, [string[]]$PrefixeS = "http://+:80/", [string] $LocalUrlPath)
 {
     foreach ($Prefix in $PrefixeS) 
     {        
         $FullPrefix = $Prefix.TrimEnd('/') + '/'
-        if ($EndpointName)
+        if ($LocalUrlPath)
         {
-            $FullPrefix = $FullPrefix + $EndpointName.TrimEnd('/') + '/'
+            $FullPrefix = $FullPrefix + $LocalUrlPath.TrimEnd('/') + '/'
         }        
         $Listener.Prefixes.Add($FullPrefix)
     }
 }
 
 
-function Get-RequestBody([System.Net.HttpListenerRequest] $Request)
+<#
+.SYNOPSIS
+Extracts the key=value pairs in the querystring of the URI into a PowerShell [hashtable] 
+e.g. $QueryStr = "Country=USA&City=Boston&City=NewYork&Zipcode=11790"
+    $QryParamS = @{ Country='USA'; City=@('Boston','NewYork'); Zipcode=11790 }
+We return an empty @{} hashtable instead $null if the QueryStr was empty
+#>
+function Get-RequestQueryParams
 {
+    [CmdletBinding()]
+    [OutputType([Hashtable])]
+    param (
+        [Parameter()]
+        [System.Net.HttpListenerRequest] $Request
+    )
+    
+    $QueryParamS = @{}
+    if ($Request.QueryString.Count)
+    {
+        # Map DotNet Specialized.NameValueCollection -> [hashtable]
+        $QryStr = $Request.QueryString  
+        foreach ($Key in $QryStr.AllKeys) 
+        {
+            $Value = $QryStr.GetValues($Key)
+            if ($null -eq $Key)
+            {
+                $Key = ''
+            }
+            $QueryParamS.Add($Key, $Value)
+        }
+    }
+    return $QueryParamS
+}
+
+
+function Get-RequestBody
+{
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [System.Net.HttpListenerRequest] $Request
+    )
+
     $StreamReader = [System.IO.StreamReader]::new($Request.InputStream)
     $Body = $RequestBody = $StreamReader.ReadToEnd()
 
@@ -231,15 +272,14 @@ function Get-Usage
     {
     $ReplyText = @"
 $Script:AppName WebServer examples:
-localhost    = $ENV:Computername
-LocalUrlPath = $LocalUrlPath
+Base Uri = http://$ENV:Computername/$LocalUrlPath/
 
-Get Help:  irm -Method Get  -Uri "http://localhost/$LocalUrlPath"
-Get ?Str:  irm -Method Get  -Uri "http://localhost/$LocalUrlPath/?Country=USA&City=Boston&City=NewYork&Zipcode=11790"
-Get Dir:   irm -Method Get  -Uri "http://localhost/$LocalUrlPath/dir"
-Get Dir:   irm -Method Get  -Uri "http://localhost/$LocalUrlPath/dir?*.ps1"
-Post Data: irm -Method Put  -Uri "http://localhost/$LocalUrlPath/" -Body '{ "key1": "val1", "key2": "val2" }' -ContentType "application/json"
-Terminate: irm -Method Post -Uri "http://localhost/$LocalUrlPath/exit"       
+Get Help:  irm -Method Get  -Uri "http://$ENV:Computername/$LocalUrlPath"
+Get ?Str:  irm -Method Get  -Uri "http://$ENV:Computername/$LocalUrlPath/?Country=USA&City=Boston&City=NewYork&Zipcode=11790"
+Get Dir:   irm -Method Get  -Uri "http://$ENV:Computername/$LocalUrlPath/dir"
+Get Dir:   irm -Method Get  -Uri "http://$ENV:Computername/$LocalUrlPath/dir?*.ps1"
+Post Data: irm -Method Put  -Uri "http://$ENV:Computername/$LocalUrlPath/" -Body '{ "key1": "val1", "key2": "val2" }' -ContentType "application/json"
+Terminate: irm -Method Post -Uri "http://$ENV:Computername/$LocalUrlPath/exit"       
 "@
     }
     
@@ -302,7 +342,7 @@ The listener will not process a request unless the url has these segments: http:
 In this program the <LocalUrlPath> = $AppName/$AppVer
 Note: $AppName, $AppVer and thus $LocalUrlPath may all be empty
 #>
-$AppName = 'MyEndpoint'
+$AppName = 'MyWebApi'
 $AppVer  = 'v1'
 
 # Init $LocalUrlPath
@@ -322,11 +362,11 @@ $ErrorMsgByErrorNo = @{
 $Listener = $null
 try 
 {
-    # Set up a Listener. https://docs.microsoft.com/en-us/dotnet/api/system.net.httplistener?view=net-6.0
+    # Set up a Listener: https://learn.microsoft.com/en-us/dotnet/api/system.net.httplistener
     $Listener = New-Object System.Net.HttpListener
 
-    Set-EndpointPrefix -Listener $Listener -EndpointName $LocalUrlPath
-    $ListenUrl = $Listener.Prefixes -join ', '
+    Add-LocalUrlPrefix -Listener $Listener -LocalUrlPath $LocalUrlPath
+    $ListenUrl = ($Listener.Prefixes -join ', ') -replace '\+\:80', $ENV:COMPUTERNAME
 
     Set-AuthenticationSchema -Listener $Listener -SchemeS 'Anonymous'
     $Listener.Start()
@@ -335,8 +375,9 @@ try
     $ExitApp = $False
     while ($Listener.IsListening)
     {
-        #https://docs.microsoft.com/en-us/dotnet/api/system.net.httplistenercontext?redirectedfrom=MSDN&view=net-6.0
         Write-Log "Listening ..."
+        # GetContext() blocks while waiting for a request.
+        # https://learn.microsoft.com/en-us/dotnet/api/system.net.httplistener.getcontext
         [System.Net.HttpListenerContext] $Context = $Listener.GetContext()
 
         #... Received a request
@@ -367,29 +408,6 @@ try
             $EndPoint = '/' # / Represents empty <EndPoint> url segment
         }
        
-        #Init $QueryParamS with key/value pairs found in QueryString
-        # e.g. $QueryStr = "Country=USA&City=Boston&City=NewYork&Zipcode=11790"
-        # => $QueryParamS = @{ Country='USA'; City=@('Boston','NewYork'); Zipcode=11790 }
-        $QueryParamS = @{}
-        if ($Request.QueryString.Count)
-        {
-            $QryStr = $Request.QueryString  # Map DotNet Specialized.NameValueCollection -> [hashtable]
-            foreach ($Key in $QryStr.AllKeys) 
-            {
-                $Value = $QryStr.GetValues($Key)
-                if ($null -eq $Key)
-                {
-                    $Key = ''
-                }
-                $QueryParamS.Add($Key, $Value)
-            }
-
-            if ($QueryParamS)
-            {
-                "Query Parameters:", ($QueryParamS | Format-Table | Out-String).TrimEnd() | Write-Log
-            }
-        }
-
         $ReturnCode = 200
         [string[]] $ReplyText = @()
         try
@@ -398,6 +416,8 @@ try
             {
                 "GET"
                 {
+                    #Init $QueryParamS with key/value pairs found in QueryString
+                    $QueryParamS = Get-RequestQueryParams -Request $Request
                     if ($EndPoint -eq "/")
                     {
                         $ReplyText, $ReturnCode = Get-Usage -QueryParamS $QueryParamS
@@ -441,7 +461,7 @@ try
             $ReplyText = $_.Exception.Message
         }
 
-        #Response: https://docs.microsoft.com/en-us/dotnet/api/system.net.httpListenercontext.response?view=net-6.0
+        #Response: https://learn.microsoft.com/en-us/dotnet/api/system.net.httplistenerresponse
         [System.Net.HttpListenerResponse] $Response = $Context.Response
         $Response.StatusCode = $ReturnCode
         if ($ReturnCode -ge 400)
