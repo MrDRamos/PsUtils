@@ -72,7 +72,13 @@ function Enable-FirewallWebServiceRule([int] $Port = 80, [string] $Name = 'Allow
     [array]$PortRuleS = Get-FirewallPortRules -Port $Port
     if ($PortRuleS)
     {
-        Enable-NetFirewallRule -InputObject $PortRuleS[0]
+        $FoundRule = $PortRuleS[0]
+        [array]$NamedRule = $PortRuleS | Where-Object { $_.DisplayName -eq $Name }
+        if ($NamedRule)
+        {
+            $FoundRule = $NamedRule[0]
+        }
+        Enable-NetFirewallRule -InputObject $FoundRule
     }
     else 
     {
