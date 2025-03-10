@@ -8,7 +8,7 @@
     RootModule = 'LockingProcessKiller.psm1'
     
     # Version number of this module.
-    ModuleVersion = '0.9.0'
+    ModuleVersion = '1.0.0'
     
     # ID used to uniquely identify this module
     GUID = 'f938e18a-3b10-4e91-ac1c-bfe2d5fa7384'
@@ -37,7 +37,7 @@
         PSData = @{
     
             # Tags applied to this module. These help with module discovery in online galleries.
-            Tags       = @("find", "lock", "locking", "file", "directory", "handle", "kill", "process")
+            Tags = @("find", "identify", "process", "lock", "locking", "open", "file", "directory", "handle", "kill", "terminate" )
     
             # A URL to the license for this module.
             # LicenseUri = ''

@@ -7,7 +7,10 @@ Param
 
     [Parameter()]
     [Alias('R')]
-    [switch] $Rebuild
+    [switch] $Rebuild,
+
+    [Parameter()]
+    [switch] $IncludeHandle
 )
 
 
@@ -42,33 +45,36 @@ if ($Clean)
 
 if ($Build)
 {
-    if (Test-Path -Path $ModuleVerDir)
+    if (Test-Path -Path $ModuleDir)
     {
-        Remove-Item -Path $ModuleVerDir -Recurse -Force
+        Remove-Item -Path $ModuleDir -Recurse -Force
     }
     $null = New-Item -ItemType Directory -Path $ModuleVerDir #-ErrorAction Ignore
 
-    function DownloadHandleApp($Path)
-    {
-        $ZipFile = "Handle.zip"
-        $ZipFilePath = "$Path\$ZipFile"
-        $Uri = "https://download.sysinternals.com/files/$ZipFile"
-        try 
-        {
-            Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
-            $null = New-Item -ItemType Directory -Path $Path -Force -ErrorAction Stop
-            Invoke-RestMethod -Method Get -Uri $Uri -OutFile $ZipFilePath -ErrorAction Stop
-            Expand-Archive -Path $ZipFilePath -DestinationPath $Path -Force -ErrorAction Stop
-            Remove-Item -Path $ZipFilePath -ErrorAction SilentlyContinue
-        }
-        catch 
-        {
-            Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
-            Throw "Failed to download dependency: handle.exe from: $Uri"
-        }
-    }
-
     Copy-Item -Path "$PSScriptRoot\src\*" -Destination $ModuleVerDir -Recurse
-    DownloadHandleApp -Path "$ModuleVerDir\handle"
+    if ($IncludeHandle)
+    {
+        function DownloadHandleApp($Path)
+        {
+            $ZipFile = "Handle.zip"
+            $ZipFilePath = "$Path\$ZipFile"
+            $Uri = "https://download.sysinternals.com/files/$ZipFile"
+            try 
+            {
+                Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+                $null = New-Item -ItemType Directory -Path $Path -Force -ErrorAction Stop
+                Invoke-RestMethod -Method Get -Uri $Uri -OutFile $ZipFilePath -ErrorAction Stop
+                Expand-Archive -Path $ZipFilePath -DestinationPath $Path -Force -ErrorAction Stop
+                Remove-Item -Path $ZipFilePath -ErrorAction SilentlyContinue
+            }
+            catch 
+            {
+                Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+                Throw "Failed to download dependency: handle.exe from: $Uri"
+            }
+        }
+
+        DownloadHandleApp -Path "$ModuleVerDir\handle"
+    }
     Compress-Archive -Path $ModuleDir -DestinationPath "$BuildDir\$ModuleName`.$ModuleVer`.zip" -ErrorAction Stop -Force
 }

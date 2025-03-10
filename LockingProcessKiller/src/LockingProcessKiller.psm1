@@ -153,7 +153,7 @@ function Find-LockingProcess
         foreach ($Line in $LineS) 
         {
             # "pwsh.exe           pid: 5808   type: File          Domain\UserName             48: D:\MySuff\Modules"
-            if ($Line -match "(?<proc>.+)\s+pid: (?<pid>\d+)\s+type: (?<type>\w+)\s+(?<user>.+)\s+(?<hnum>\w+)\:\s+(?<path>.*)\s*")
+            if ($Line -match "(?<proc>.+)\s+pid: (?<pid>\d+)\s+type: (?<type>\w+)\s+(?<user>.+)\s+(?<hnum>\w+)\:?\s+(?<path>.*)\s*")
             {
                 $Proc = $Matches.proc.Trim()
                 if (@("handle.exe", "Handle64.exe") -notcontains $Proc)
