@@ -47,7 +47,9 @@ function Write-Log
     }
 }
 
+#endregion Helper functions
 
+#region Security
 
 <#
 .SYNOPSIS
@@ -60,7 +62,7 @@ function Get-FirewallPortRules([int] $Port = 80, [switch] $IncludeSystemApps)
     if (!$IncludeSystemApps)
     {
         $PortRuleS = $PortRuleS | Where-Object { Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $_ | 
-                                  Where-Object -Property Program -EQ 'Any' }
+            Where-Object -Property Program -EQ 'Any' }
     }
     return $PortRuleS
 }
@@ -90,6 +92,99 @@ Enable-FirewallWebServiceRule
 exit
 #>
 
+
+<#
+Parses the output of: netsh http show urlacl
+Returns an array of [PSCustomObject[]] with these properties:
+    [string] URL 
+    [string] User
+    [bool]   Listen
+    [bool]   Delegate
+    [string] SDDL
+
+    
+#>
+function Get-UrlReservation
+{
+    [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
+    param (
+        [Parameter()]
+        [string]$User = ''
+    )
+
+
+    $UrlReservationS = @()
+    $UrlAclS = @()
+    $InUrlSection = $false
+    $LineS = netsh http show urlacl
+    foreach ($Line in $LineS) 
+    {
+        if ([string]::IsNullOrWhiteSpace($Line))
+        {
+            $InUrlSection = $false
+            if ($UrlAclS)
+            {
+                $UserAclS = $UrlAclS | Where-Object { $_.User -match $User }
+                if ($UserAclS)
+                {
+                    $UrlReservationS += $UserAclS
+                }
+                $UrlAclS = @()
+            }
+        }
+        elseif ($Line -match 'Reserved URL\s+: (\S+)')
+        {
+            $InUrlSection = $true
+            $UrlAcl = [PSCustomObject]@{
+                URL      = $matches[1]
+                User     = $null
+                Listen   = $false
+                Delegate = $false
+                SDDL     = $null
+            }
+            $UrlAclS += $UrlAcl
+        }
+        elseif ($InUrlSection)
+        {
+            if ($Line -match 'User: (\S+)')
+            {
+                if ($UrlAcl.User)
+                {
+                    $UrlAcl = $UrlAcl.PsObject.Copy()
+                    $UrlAcl.User = $matches[1]
+                    $UrlAclS += $UrlAcl
+                }
+                else 
+                {
+                    $UrlAcl.User = $matches[1]
+                }
+            }
+            elseif ($Line -match 'Listen: (\S+)')
+            {
+                $UrlAcl.Listen = $matches[1] -eq 'Yes'
+            }
+            elseif ($Line -match 'Delegate: (\S+)')
+            {
+                $UrlAcl.Delegate = $matches[1] -eq 'Yes'
+            }
+            elseif ($Line -match 'SDDL: (\S+)')
+            {
+                $UrlAcl.SDDL = $matches[1]
+            }
+        }
+    }
+    return $UrlReservationS
+}
+<# Unit test
+Get-UrlReservation | ft
+Get-UrlReservation -User $Env:USERNAME | ft
+exit
+#>
+
+#endregion Security
+
+#region WebApi functions
 
 <#
 This code example returns the user information for a client request
@@ -122,7 +217,7 @@ function Get-ClientAuthenticationMessage([System.Net.HttpListenerContext] $Conte
 
 <#
 .SYNOPSIS
-Configure how the listener authenticates incomming requests.
+Configure how the listener authenticates incoming requests.
 
 .PARAMETER SchemeS
 One or more [System.Net.AuthenticationSchemes] 
@@ -169,16 +264,19 @@ function Set-AuthenticationSchema([System.Net.HttpListener] $Listener, [System.N
 $PrefixeS = @("http://localhost:80/")              # -> irm "http://localhost/"
 $PrefixeS = @("http://localhost:8080/")            # -> irm "http://localhost:8080/"
 $PrefixeS = @("http://$($env:COMPUTERNAME):8080/") # -> irm "http://<ComputerName>:8080/"
-#PrefixeS = @("http://$($env:COMPUTERNAME):80/")    # Port 80 requires app to run as Administrator
-#PrefixeS = @("http://+:80/")                       # use localhost | ipaddress | computername
+#PrefixeS = @("http://$($env:COMPUTERNAME):80/")   # Port 80 requires app to run as Administrator
+#PrefixeS = @("http://+:80/")                      # use localhost | ipaddress | computername
 $PrefixeS = @("http://+:8080/test/")               # -> irm "http://localhost:8080/test"
 
 .NOTES
-Remote computers will not be able to access the service unless a firewall rule to enable incomming access to the port is created.
+Remote computers will not be able to access the service unless a firewall rule to enable incoming access to the port is created.
 New-NetFirewallRule -DisplayName "Allow Port 80" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow -Profile @('Private', 'Domain')
 
 .LINK
 HTTPS support: https://stackoverflow.com/questions/11403333/httplistener-with-https-support/11457719#11457719
+
+Routing Incoming Requests
+https://learn.microsoft.com/en-us/windows/win32/http/routing-incoming-requests
 #>
 function Add-LocalUrlPrefix([System.Net.HttpListener] $Listener, [string[]]$PrefixeS = "http://+:80/", [string] $LocalUrlPath)
 {
@@ -258,16 +356,16 @@ function Get-RequestBody
     Return $Body
 }
 
-#endregion Helper functions
+#endregion WebApi functions
 
-#region Handlers
+#region Endpoint-Handlers
 
 function Get-Usage
 {
     [CmdletBinding()]
     param (
         [Parameter()]
-        [Object] $QueryParamS
+        [Object] $QueryParamS = @{}
     )
 
     if ($QueryParamS.Count)
@@ -298,7 +396,7 @@ function Get-FileList
     [CmdletBinding()]
     param (
         [Parameter()]
-        [Object] $QueryParamS
+        [Object] $QueryParamS = @{}
     )
 
     $ReplyText = ''
@@ -322,16 +420,16 @@ function Get-FileList
     catch 
     {
         $ErrorMsg = "Failed to ${ErrorActionCtx}: $($_.Exception.Message)"
-        Write-Log $ErrorMsg
+        Write-Log $ErrorMsg -Level 'Error'
         return @($ErrorMsg, 400)
     }
     
     return @($ReplyText, 200)
 }
 
-#endregion Handlers
+#endregion Endpoint-Handlers
 
-
+############## main ##############
 #region main
 
 <######################################   MAIN  ######################################
@@ -341,6 +439,7 @@ function Get-FileList
     https://github.com/PowerShell/Polaris
     https://github.com/TLaborde/NodePS
 ######################################################################################>
+
 
 <#
 A request url hase these segments: http://<hostname>/<LocalUrlPath><EndPoint><?QuerySting>
@@ -372,8 +471,41 @@ try
     $Listener = New-Object System.Net.HttpListener
 
     Add-LocalUrlPrefix -Listener $Listener -LocalUrlPath $LocalUrlPath
-    $ListenUrl = ($Listener.Prefixes -join ', ') -replace '\+\:80', $ENV:COMPUTERNAME
+    $ListenUrlCsv = $Listener.Prefixes -join ', ' 
+    $ListenUrl = $ListenUrlCsv -replace '\+\:80', $ENV:COMPUTERNAME
 
+    <#
+    To run HttpListener in non-admin mode. You need to grant the user a URL reservation with the OS.
+    The netsh http add urlacl command is used to reserve a specified URL for non-administrator users and accounts.
+    Example to register a specific URL: 'http://$ENV:COMPUTERNAME/MyWebsite'
+        netsh http add urlacl url=http://+:80/MyWebsite user=DOMAIN\user
+    Example to register any URL on port 80
+        netsh http add urlacl url=http://+:80 user=DOMAIN\user
+    
+    netsh http add urlacl:
+    https://learn.microsoft.com/en-us/windows-server/networking/technologies/netsh/netsh-http#add-urlacl
+
+    HttpListener Access Denied
+    https://stackoverflow.com/questions/4019466/httplistener-access-denied
+
+    Configuring HTTP and HTTPS:
+    https://learn.microsoft.com/en-us/dotnet/framework/wcf/feature-details/configuring-http-and-https?redirectedfrom=MSDN
+    #>
+    [array]$UserReservationS = Get-UrlReservation -User $ENV:USERNAME | Where-Object { $ListenUrlCsv.IndexOf($_.Url) -ge 0 }
+    # $UserReservationS = $null ##DD
+    if (!$UserReservationS)
+    {
+        if (!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
+        {
+            Write-Warning "The WebService needs to be launched with elevated Administrator permissions to allow access from remote servers"
+            $CommandLine = "-File `"" + $MyInvocation.MyCommand.Path + "`" " + $MyInvocation.UnboundArguments    
+            Start-Process -Verb RunAs -FilePath pwsh.exe -ArgumentList $CommandLine
+            return
+        }
+    }
+    $ReplyText, $ReturnCode = Get-Usage
+    $ReplyText | Write-Host
+    
     Set-AuthenticationSchema -Listener $Listener -SchemeS 'Anonymous'
     $Listener.Start()
     Write-Log "$AppName listening on: $ListenUrl"
