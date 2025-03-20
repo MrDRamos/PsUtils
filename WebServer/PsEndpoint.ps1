@@ -231,7 +231,7 @@ One or more [System.Net.AuthenticationSchemes]
     Anonymous
 
 -Anonymous
-    No Athentication i.e. The endpoint will accept any client connection
+    No Authentication i.e. The endpoint will accept any client connection
     The endpoint call needs no credentials
 
 -Basic
@@ -433,7 +433,7 @@ function Get-FileList
 #region main
 
 <######################################   MAIN  ######################################
- Refernces:
+ References:
     https://4sysops.com/archives/building-a-web-server-with-powershell/
     https://gist.github.com/Tiberriver256/868226421866ccebd2310f1073dd1a1e
     https://github.com/PowerShell/Polaris
@@ -442,7 +442,7 @@ function Get-FileList
 
 
 <#
-A request url hase these segments: http://<hostname>/<LocalUrlPath><EndPoint><?QuerySting>
+A request url has these segments: http://<hostname>/<LocalUrlPath><EndPoint><?QuerySting>
 The listener will not process a request unless the url has these segments: http://<hostname>/<LocalUrlPath>
 In this program the <LocalUrlPath> = $AppName/$AppVer
 Note: $AppName, $AppVer and thus $LocalUrlPath may all be empty
@@ -450,7 +450,7 @@ Note: $AppName, $AppVer and thus $LocalUrlPath may all be empty
 $AppName = 'MyWebApi'
 $AppVer  = 'v1'
 
-# Init $LocalUrlPath
+# Init $LocalUrlPath -> Resulting $URI= "http://$ENV:Computername/ArellaApi/v1"
 $LocalUrlPath = $AppName
 if (![string]::IsNullOrWhiteSpace($AppVer))
 {
@@ -528,8 +528,8 @@ try
             Write-Log $ClientAuthMsg
         }
 
-        # A request url hase these segments: http://<hostname>/<LocalUrlPath><EndPoint><?QuerySting>
-        # Here we extract the optioanl $EndPoint segment. 
+        # A request url has these segments: http://<hostname>/<LocalUrlPath><EndPoint><?QuerySting>
+        # Here we extract the optional $EndPoint segment. 
         $EndPoint = $null
         $LocalRequest = $Request.Url.LocalPath
         $idx = $LocalRequest.ToLower().IndexOf($LocalUrlPath.ToLower())
