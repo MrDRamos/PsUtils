@@ -133,7 +133,7 @@ $ErrorActionPreference = "STOP"
 
 if (!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
 {
-  Write-Host "Error: This program must be launched from an Admistrator console." -ForegroundColor Red
+  Write-Host "Error: This program must be launched from an Administrator console." -ForegroundColor Red
   return
 }
 
@@ -162,7 +162,7 @@ if (Test-Path -Path "$BdePath\IDAPI32.DLL")
   }
 }
 
-# Kill orphaned Regsvr32 instances started by a prior invokation
+# Kill orphaned Regsvr32 instances started by a prior invocation
 $ProcS= Get-Process -Name "Regsvr32" -ErrorAction SilentlyContinue
 if ($ProcS)
 {
@@ -193,7 +193,7 @@ if (!(Test-Path -Path $HKLM_Bde))
 $null = Set-ItemProperty -Path $HKLM_Bde -Name "DLLPATH" -Value $InstallBdeDir -ErrorAction Stop
 
 <# Install the BDE
- The Borland\Delphi7\Install\Common\Borland Shared\BDE\bdeinst.cab contains a bdeinst.dll insaller 
+ The Borland\Delphi7\Install\Common\Borland Shared\BDE\bdeinst.cab contains a bdeinst.dll installer 
  for BDE V5.1.1.1. It extracts its files into the BDE folder and initializes the registry settings.
  SHA-256(bdeinst.dll)= C3A55498C8F2B0C685C6279E18B016576A60FD2A1B985E0063CEC8BF7727E976
  SHA-256(bdeinst.cab)= 77B18C13B8E460668FCA5FF37561E223C86DA46FE2F1B2AB52D67A581E1A9A9D
