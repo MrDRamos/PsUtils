@@ -1,3 +1,17 @@
+<#PSScriptInfo
+
+.VERSION 1.0
+
+.GUID e8a0a1b3-a9a0-4c75-8fd9-689295e01453
+
+.AUTHOR david.ramos@hotmail.com
+
+.TAGS Certificate PEM TLS SSL Netskope Proxy WSL Docker TrustStore CorporateNetwork DevTools HTTPS
+
+.PROJECTURI https://github.com/MrDRamos/PsUtils/blob/master/Internet/Export-CertBundle.ps1
+#>
+
+
 <#
 .SYNOPSIS
 Creates one PEM CA bundle so apps can trust HTTPS in Netskope-intercepted networks.
