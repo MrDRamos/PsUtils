@@ -20,6 +20,9 @@ Specify -Force to overwrite the existing output icon file.
 Returns the file path of the output icon file if set true,
 Pops up the output icon file in the file explorer otherwise
 
+.PARAMETER Open
+Opens the output icon file in the default associated application if set true.
+
 .EXAMPLE
 ConvertTo-Icon -Path $ENV:windir\ImmersiveControlPanel\images\Logo.png
 #>
@@ -35,7 +38,10 @@ param(
     [switch] $Force,
 
     [Parameter()]
-    [switch] $PassThru
+    [switch] $PassThru,
+
+    [Parameter()]
+    [switch] $Open
 )
 
 
@@ -61,6 +67,9 @@ Specify -Force to overwrite the existing output icon file.
 Returns the file path of the output icon file if set true,
 Pops up the output icon file in the file explorer otherwise
 
+.PARAMETER Open
+Opens the output icon file in the default associated application if set true.
+
 .EXAMPLE
 ConvertTo-Icon -Path $ENV:windir\ImmersiveControlPanel\images\Logo.png
 #>
@@ -78,7 +87,10 @@ function ConvertTo-Icon
         [switch] $Force,
 
         [Parameter()]
-        [switch] $PassThru
+        [switch] $PassThru,
+
+        [Parameter()]
+        [switch] $Open
     )
 
     if (!($Path -and (Test-Path $Path)))
@@ -111,9 +123,12 @@ function ConvertTo-Icon
 
     if ($PassThru)
     {
-        return $Destination
+        & $Destination
     }
-    & Explorer.exe "/SELECT,$Destination"
+    if ($Open)
+    {
+        Start-Process -FilePath $Destination
+    }
 }
 
 ConvertTo-Icon @PSBoundParameters
