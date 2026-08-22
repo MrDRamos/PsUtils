@@ -17,7 +17,10 @@ param (
     [string[]] $AddressFamily = 'IPv4', #@('IPv4','IPv6'),
 
     [Parameter()]
-    [switch] $Physical
+    [switch] $Physical,
+
+    [Parameter()]
+    [switch] $Passthru
 )
 
 $AdapterS = Get-NetAdapter -Physical:$Physical
@@ -26,14 +29,22 @@ $AdapterIpS = foreach ($IpAddr in ($IpAddrS | Sort-Object PrefixOrigin,IPAddress
     $Adapter = $AdapterS | Where-Object { $_.ifIndex -eq $IpAddr.ifIndex }
     [PSCustomObject]@{
         IPAddress = $IpAddr.IPAddress + '/' + $IpAddr.PrefixLength
-        PrefixOrigin = $IpAddr.PrefixOrigin
+        Name = $Adapter.InterfaceAlias
+        Status = $Adapter.Status #MediaConnectionState #InterfaceOperationalStatus
         #LifeTime = $IpAddr.ValidLifetime
         #AdapterName = $Adapter.Name #$IpAddr.InterfaceAlias
         InterfaceDescription = $Adapter.InterfaceDescription
-        Status = $Adapter.Status #MediaConnectionState #InterfaceOperationalStatus
         LinkSpeed = $Adapter.LinkSpeed
+        PrefixOrigin = $IpAddr.PrefixOrigin
         MacAddress = $Adapter.MacAddress
-        InterfaceIndex = $Adapter.InterfaceIndex
+        IfIdx = $Adapter.InterfaceIndex
     } | Write-Output
 }
-$AdapterIpS
+
+if ($Passthru) {
+    $AdapterIpS | Write-Output
+}
+else 
+{
+    $AdapterIpS | Format-Table -AutoSize
+}
