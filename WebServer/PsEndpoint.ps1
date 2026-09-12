@@ -94,6 +94,8 @@ exit
 
 
 <#
+.SYNOPSIS
+Retrieve URL reservations for the specified user.
 Parses the output of: netsh http show urlacl
 Returns an array of [PSCustomObject[]] with these properties:
     [string] URL 
@@ -102,7 +104,21 @@ Returns an array of [PSCustomObject[]] with these properties:
     [bool]   Delegate
     [string] SDDL
 
-    
+.PARAMETER User
+The user for which to retrieve URL reservations.
+User can be a regular expression to match multiple users.
+The default returns all URL reservations.
+
+.NOTES
+An HTTP URL reservation is an operating-system registration that grants a user
+or account permission to listen for HTTP requests on a URL prefix, such as
+http://+:80/MyWebsite. Windows HTTP.sys checks these reservations before an
+application creates an HttpListener. They allow a web service to bind to the
+reserved URL without running as an administrator and help prevent one user from
+claiming a URL intended for another service.
+
+.EXAMPLE
+Get-UrlReservation -User 'BUILTIN\Administrators'
 #>
 function Get-UrlReservation
 {
@@ -147,7 +163,7 @@ function Get-UrlReservation
         }
         elseif ($InUrlSection)
         {
-            if ($Line -match 'User: (\S+)')
+            if ($Line -match 'User: ([\S| ]+)')
             {
                 if ($UrlAcl.User)
                 {
@@ -514,9 +530,21 @@ try
     while ($Listener.IsListening)
     {
         Write-Log "Listening ..."
-        # GetContext() blocks while waiting for a request.
-        # https://learn.microsoft.com/en-us/dotnet/api/system.net.httplistener.getcontext
-        [System.Net.HttpListenerContext] $Context = $Listener.GetContext()
+        # https://learn.microsoft.com/en-us/dotnet/api/system.net.httplistener.begingetcontext
+        $pendingContext = $listener.BeginGetContext($null, $null)
+        try 
+        {
+            # GetContext() blocks while waiting for a request.
+            while (-not $pendingContext.AsyncWaitHandle.WaitOne(200)) 
+            {
+                # Return to PowerShell regularly so Ctrl+C can interrupt the script.
+            }
+            $context = $listener.EndGetContext($pendingContext)
+        }
+        finally 
+        {
+            $pendingContext.AsyncWaitHandle.Dispose()
+        }
 
         #... Received a request
         [System.Net.HttpListenerRequest] $Request = $Context.Request
