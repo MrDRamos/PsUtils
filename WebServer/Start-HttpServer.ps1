@@ -1,4 +1,24 @@
+<#PSScriptInfo
+
+.VERSION 1.0.0
+
+.GUID fed22550-fc5f-4809-9c9c-90c3be94432e
+
+.AUTHOR MrDRamos
+
+.TAGS http server web server static files python http.server
+
+.PROJECTURI https://github.com/MrDRamos/PsUtils/blob/master/WebServer/Start-HttpServer.ps1
+
+.RELEASENOTES
+Initial release.
+
+.PRIVATEDATA
+
+#>
+
 <#
+
 .SYNOPSIS
     Starts a simple static HTTP server for a local directory.
     With the same behavior as Python's simple HTTP server (http.server).
