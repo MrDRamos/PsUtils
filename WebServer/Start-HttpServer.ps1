@@ -60,16 +60,33 @@ param(
 
 
 #Region Helper Functions
-function Get-LocalLanAddress 
+function Get-LocalLanAddress
 {
+    [array]$LanAddresseS = $null
+    foreach ($Adapter in (Get-NetAdapter | Where-Object Status -EQ 'Up'))
+    {
+        [array]$IpAddresseS = Get-NetIPAddress -InterfaceIndex $Adapter.ifIndex -AddressFamily IPv4 | 
+            Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' }
+        foreach ($IpAddress in $IpAddresseS)
+        {
+            $LanAddresseS += [PsCustomObject]@{ AdapterName = $Adapter.Name; IpAddress = $IpAddress.IpAddress }
+        }
+    }
+    return $LanAddresseS
+
+<#
     $AdapterIndexeS = Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -ExpandProperty ifIndex
     Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
             $_.InterfaceIndex -in $AdapterIndexeS -and
             $_.IPAddress -notlike '127.*' -and
             $_.IPAddress -notlike '169.254.*'
         } | Select-Object -ExpandProperty IPAddress
+#>
 }
-
+<## Unit Test
+Get-LocalLanAddress
+exit
+#>
 
 function Test-IsAdministrator
 {
@@ -252,20 +269,20 @@ try
         throw "Failed to start the server on port $Port. $($_.Exception.Message)"
     }
 
-    Write-Host "Serving $siteRoot"
+    Write-Host "Serving $siteRoot" -ForegroundColor Cyan
     if (-not $LocalOnly)
     {
-        [array]$lanAddresseS = Get-LocalLanAddress
-        if ($lanAddresseS.Count -eq 1) 
+        [array]$LanAddresseS = Get-LocalLanAddress
+        if ($LanAddresseS.Count -eq 1) 
         {
-            Write-Host "Open http://$($lanAddresseS[0]):$Port/"
+            Write-Host "Open http://$($LanAddresseS[0].IpAddress):$Port/"
         }
-        elseif ($lanAddresseS.Count -gt 1) 
+        elseif ($LanAddresseS.Count -gt 1) 
         {
             Write-Host 'Open one of these LAN addresses:'
-            foreach ($lanAddress in $lanAddresseS) 
+            foreach ($LanAddress in $LanAddresseS) 
             {
-                Write-Host "  http://${lanAddress}:$Port/"
+                Write-Host ("{0,-30} - {1}" -f "http://$($LanAddress.IpAddress):$Port/", $LanAddress.AdapterName)
             }
         }
         else 
@@ -277,7 +294,7 @@ try
     {
         Write-Host "Open http://localhost:$Port/"
     }
-    Write-Host 'Press Ctrl+C to stop the server.'
+    Write-Host 'Press Ctrl+C to stop the server.' -ForegroundColor Cyan
     #EndRegion Server Setup
 
     #Region Request Handling
@@ -300,7 +317,7 @@ try
 
         if ($VerbosePreference -eq 'Continue') 
         {
-            Write-Host "Received request: $($context.Request.HttpMethod) $($context.Request.Url.AbsolutePath)"
+            Write-Host "Received request from $($context.Request.RemoteEndPoint): $($context.Request.HttpMethod) $($context.Request.Url.AbsolutePath)"
         }
         $requestPath = [System.Uri]::UnescapeDataString($context.Request.Url.AbsolutePath).TrimStart('/')
         $filePath = [System.IO.Path]::GetFullPath((Join-Path $siteRoot $requestPath))
