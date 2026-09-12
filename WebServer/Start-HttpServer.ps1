@@ -239,7 +239,12 @@ function Get-ContentType
         '.xml'  = 'application/xml; charset=utf-8'
     }
 
-    return $fallbackContentTypes[$extension] ?? 'application/octet-stream'
+    $contentType = $fallbackContentTypes[$extension]
+    if ($null -eq $contentType)
+    {
+        $contentType = 'application/octet-stream'
+    }
+    return $contentType
 }
 #EndRegion Helper Functions
 
