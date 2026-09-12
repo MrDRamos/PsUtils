@@ -4,15 +4,23 @@
     With the same behavior as Python's simple HTTP server (http.server).
 
 .DESCRIPTION
-    Uses the built-in .NET HttpListener class and requires no additional packages.
-    It serves files below SiteRoot, returns index.html for directory URLs when present,
-    and generates a directory listing when no index.html exists. GET and HEAD requests
-    and conditional caching with Last-Modified and If-Modified-Since are supported.
-    Requests outside SiteRoot and missing paths return 404.
+    Starts a lightweight static file server using the built-in .NET HttpListener class,
+    with behavior similar to Python's `python -m http.server` command. No additional
+    packages or web framework are required.
 
-    The default listener uses all network interfaces, like Python's http.server. Use
-    LocalOnly to restrict it to http://localhost:8000/. LAN access requires an elevated
-    PowerShell session and an enabled inbound Windows Firewall rule for the selected TCP port.
+    The server serves files below SiteRoot, returns index.html for directory URLs when
+    present, and generates a directory listing when no index.html exists. It supports
+    GET and HEAD requests, common content types, directory redirects, and conditional
+    caching with Last-Modified and If-Modified-Since. Missing paths and requests that
+    resolve outside SiteRoot return 404.
+
+    By default, the server listens on all network interfaces at port 8000, similar to
+    Python's http.server. Use LocalOnly to restrict access to this computer at
+    http://localhost:8000/. LAN access requires an elevated PowerShell session and an
+    enabled inbound Windows Firewall rule for the selected TCP port.
+
+    This script is intended for local development, testing, demonstrations, and quick
+    file sharing. It is not intended to replace a production web server.
 
 .PARAMETER SiteRoot
     The root directory of the site to serve. Defaults to the directory containing this script.
